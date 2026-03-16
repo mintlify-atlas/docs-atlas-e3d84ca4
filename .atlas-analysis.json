@@ -1,0 +1,137 @@
+{
+  "projectType": "framework",
+  "projectName": "JReactive",
+  "projectDescription": "A Java/Spring Boot reactive UI framework for building component-based web applications with SSR/CSR, annotation-driven state management, WebSocket-powered live updates, and AOT compilation.",
+  "theme": "linden",
+  "primaryColor": "#1D6E4E",
+  "lightColor": "#E8F5EF",
+  "darkColor": "#0F3D2A",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/components",
+              "concepts/state-management",
+              "concepts/reactive-bindings",
+              "concepts/routing",
+              "concepts/rendering-modes"
+            ]
+          },
+          {
+            "group": "Annotations Reference",
+            "pages": [
+              "annotations/state",
+              "annotations/bind",
+              "annotations/call",
+              "annotations/route",
+              "annotations/stateful",
+              "annotations/stateless",
+              "annotations/client",
+              "annotations/dom-mode"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/spring-boot-setup",
+              "guides/standalone-setup",
+              "guides/slots-and-composition",
+              "guides/redis-state-store",
+              "guides/aot-apt"
+            ]
+          },
+          {
+            "group": "UI Components",
+            "pages": [
+              "ui/overview",
+              "ui/jbutton",
+              "ui/jinput",
+              "ui/jform",
+              "ui/jtable",
+              "ui/jmodal",
+              "ui/jselect",
+              "ui/jcheckbox",
+              "ui/jcard"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core API",
+            "pages": [
+              "api/html-component",
+              "api/reactive-var",
+              "api/type",
+              "api/component-engine",
+              "api/event-bus"
+            ]
+          },
+          {
+            "group": "SPI",
+            "pages": [
+              "api/state-store",
+              "api/component-accessor",
+              "api/jrx-session",
+              "api/jrx-message-broker"
+            ]
+          },
+          {
+            "group": "Smart Collections",
+            "pages": [
+              "api/smart-list",
+              "api/smart-map",
+              "api/smart-set"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Component-based UI model with SSR and CSR rendering modes",
+    "Annotation-driven reactive state management (@State, @Bind, @Call)",
+    "WebSocket-powered live DOM patching via idiomorph morphing",
+    "Built-in client-side router with @Route and @Param annotations",
+    "APT (Annotation Processing) for zero-overhead AOT compilation",
+    "Stateless mode: cryptographically-signed state sent to client (zero server memory)",
+    "Redis-backed distributed session state via jreactive-store-redis",
+    "Scoped CSS and co-located JS per component",
+    "Spring Boot auto-configuration via jreactive-starter-spring",
+    "Pre-built UI component library (JButton, JInput, JForm, JTable, JModal, etc.)"
+  ],
+  "publicApiSurface": [
+    "HtmlComponent (base class for all components)",
+    "ReactiveVar<T> (reactive value holder)",
+    "Type<T> (typed reactive wrapper)",
+    "@State (marks field as reactive state)",
+    "@Bind (exposes field as template binding)",
+    "@Call (marks method as callable from template events)",
+    "@Route (maps component to a URL path)",
+    "@Param (injects route path parameters)",
+    "@UrlParam (injects URL query parameters)",
+    "@Stateful (enables Redis/DB serialization of component state)",
+    "@Stateless (zero-memory mode with signed client state)",
+    "@Client (enables client-side rendering shell)",
+    "@DomMode (controls SERVER_OWNED HTML-on-the-wire mode)",
+    "EventBus (pub/sub bus for cross-component communication)",
+    "SmartList<T> / SmartMap<K,V> / SmartSet<T> (reactive collections)",
+    "StateStore (SPI for pluggable session state backends)",
+    "AstComponentEngine.installAsDefault() (bootstrap entry point)",
+    "ComponentEngine.setStrategy(Strategy) (custom engine injection)"
+  ]
+}
