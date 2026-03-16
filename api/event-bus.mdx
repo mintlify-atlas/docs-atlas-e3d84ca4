@@ -1,0 +1,118 @@
+---
+title: EventBus
+description: A lightweight publish/subscribe bus for sending typed events between components without direct references.
+keywords: [EventBus, publish, subscribe, events, inter-component, JReactive]
+---
+
+`EventBus` provides a simple string-keyed publish/subscribe mechanism. Components can emit named events with arbitrary payloads and subscribe to those events without holding a direct reference to each other.
+
+```java
+public class EventBus
+```
+
+Internally, `EventBus` uses a `ConcurrentHashMap<String, List<Consumer<Object>>>` for the event registry and a `CopyOnWriteArrayList` per event, so subscribing and emitting are safe from multiple threads.
+
+---
+
+## Methods
+
+### on(String event, Consumer\<T\> handler)
+
+```java
+public <T> void on(String event, Consumer<T> handler)
+```
+
+Registers a listener for the named event. The listener is called each time the event is emitted.
+
+<ParamField path="event" type="string" required>
+  The event name to listen for. Case-sensitive.
+</ParamField>
+
+<ParamField path="handler" type="Consumer<T>" required>
+  A callback that receives the payload emitted with the event. The type parameter `T` is unchecked at runtime — ensure the emitter and subscriber agree on the payload type.
+</ParamField>
+
+### emit(String event, Object payload)
+
+```java
+public void emit(String event, Object payload)
+```
+
+Publishes an event, calling all registered handlers with the given payload. Handlers are called synchronously in registration order. If no handlers are registered for the event, the call is a no-op.
+
+<ParamField path="event" type="string" required>
+  The event name to publish.
+</ParamField>
+
+<ParamField path="payload" type="Object" required>
+  The data to pass to each handler. Pass `null` for events that carry no data.
+</ParamField>
+
+---
+
+## Example
+
+### Setup
+
+Declare a shared `EventBus` instance. In a Spring Boot application you typically expose it as a bean:
+
+```java
+@Configuration
+public class JrxConfig {
+
+    @Bean
+    public EventBus eventBus() {
+        return new EventBus();
+    }
+}
+```
+
+### Publishing
+
+```java
+public class CartComponent extends HtmlComponent {
+
+    @Autowired
+    private EventBus bus;
+
+    @Call
+    public void addItem(String itemId) {
+        // ... add the item
+        bus.emit("cart:updated", cartSize);
+    }
+}
+```
+
+### Subscribing
+
+```java
+public class CartBadge extends HtmlComponent {
+
+    @Autowired
+    private EventBus bus;
+
+    @State
+    public int count = 0;
+
+    @Override
+    protected void onMount() {
+        bus.on("cart:updated", (Integer newCount) -> {
+            count = newCount;
+            updateState("count");
+        });
+    }
+
+    @Override
+    protected String template() {
+        return "<span class=\"badge\">{{count}}</span>";
+    }
+}
+```
+
+<Warning>
+`EventBus` does not provide automatic unsubscription. If a component subscribes in `onMount()`, it should unsubscribe in `onUnmount()` to avoid memory leaks. The current `EventBus` API does not return an unsubscribe handle from `on()`, so keep a reference to the lambda and remove it if your lifecycle requires it, or use a separate cleanup mechanism.
+</Warning>
+
+<Note>
+`EventBus` is intentionally minimal. For cross-node communication in clustered deployments, consider using a `JrxMessageBroker` backed by a pub/sub system such as Redis. See the [`JrxMessageBroker`](/api/jrx-message-broker) page.
+</Note>

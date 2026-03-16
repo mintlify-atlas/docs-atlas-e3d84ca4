@@ -1,0 +1,151 @@
+---
+title: Routing
+description: Map components to URL paths with @Route, define layouts with @Layout, and inject path and query parameters with @Param and @UrlParam.
+---
+
+JReactive's router maps URL paths to `HtmlComponent` subclasses. Navigation is handled client-side over WebSocket — no full-page reloads.
+
+## Declaring a route with `@Route`
+
+Add `@Route(path = "/path")` to any `HtmlComponent` subclass to register it as a page:
+
+```java
+@Route(path = "/")
+public class HomePage extends AppPage {
+
+    @Override
+    protected String template() {
+        return """
+            <div class="page">
+              <h1>Welcome</h1>
+            </div>
+            """;
+    }
+}
+```
+
+The `path` value must start with `/`.
+
+## Defining a layout with `@Layout`
+
+`@Layout` wraps one or more pages in a shared shell component. The layout's template uses `<slot />` as the insertion point for the page content:
+
+```java
+// MainLayout.java
+public class MainLayout extends HtmlComponent {
+
+    @Override
+    protected String template() {
+        return """
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <title>JReactive App</title>
+            </head>
+            <body>
+                <nav>
+                    <a href="/" data-router>Home</a>
+                    <a href="/users/10" data-router>Profile</a>
+                </nav>
+                <main id="app">
+                    <slot />
+                </main>
+                <script src="/js/jreactive-runtime.js"></script>
+            </body>
+            </html>
+            """;
+    }
+}
+```
+
+Apply the layout to a page or an abstract base class:
+
+```java
+// AppPage.java — shared base for all pages
+@Layout(MainLayout.class)
+public abstract class AppPage extends HtmlComponent { }
+
+// HomePage.java — inherits the layout
+@Route(path = "/")
+public class HomePage extends AppPage { ... }
+```
+
+<Note>
+  `@Layout` is `@Inherited`, so you can declare it once on an abstract base class and every concrete subclass will automatically use the same layout.
+</Note>
+
+## Registering routes with `RouteProvider`
+
+`RouteProvider` is an SPI interface you can implement to register routes programmatically — useful when you need dynamic routing or want to integrate with a dependency-injection container:
+
+```java
+public interface RouteProvider {
+    Result resolve(String path);
+
+    record Result(HtmlComponent component, Map<String, String> params) {}
+}
+```
+
+Implement `RouteProvider` and register it via `ServiceLoader` or Spring's component scan.
+
+## Path parameters with `@Param`
+
+Define a placeholder in the route path with curly braces, then inject the captured value into a field annotated with `@Param`:
+
+```java
+@Route(path = "/users/{id}")
+public class UserProfilePage extends AppPage {
+
+    @Param("id")
+    public int userId;
+
+    @Override
+    protected String template() {
+        return """
+            <div>
+              <h1>User profile: {{userId}}</h1>
+            </div>
+            """;
+    }
+}
+```
+
+JReactive converts the raw string value to the field's declared type (`int`, `long`, `boolean`, `String`, etc.) automatically.
+
+## Query parameters with `@UrlParam`
+
+Bind a URL query string parameter (e.g. `?search=java`) to a field with `@UrlParam`:
+
+```java
+@Route(path = "/search")
+public class SearchPage extends AppPage {
+
+    @UrlParam("search")
+    @State
+    public String query = "";
+
+    @Override
+    protected String template() {
+        return """
+            <div>
+              <p>Searching for: {{query}}</p>
+            </div>
+            """;
+    }
+}
+```
+
+If `value` is left blank on `@UrlParam`, the field name is used as the parameter name.
+
+## Client-side navigation with `data-router`
+
+Add the `data-router` attribute to any `<a>` tag to intercept the click and navigate without a full-page reload:
+
+```html
+<a href="/" data-router>Home</a>
+<a href="/users/10" data-router>Profile</a>
+<a href="/search?search=java" data-router>Search</a>
+```
+
+Without `data-router`, the browser performs a normal HTTP navigation and JReactive re-renders the full page.

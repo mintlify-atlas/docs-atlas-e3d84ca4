@@ -1,0 +1,93 @@
+---
+title: "@Stateful"
+description: "Serialize component state to an external store (e.g. Redis) so it survives restarts and scales across nodes."
+---
+
+`@Stateful` marks a component for external state serialization. When a session is inactive or a server node restarts, the component's `@State` fields are serialized and written to the configured `StateStore` (typically Redis). On the next request the state is deserialized and the component is restored transparently.
+
+## Signature
+
+```java
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+public @interface Stateful {
+}
+```
+
+`@Stateful` has no attributes.
+
+## Usage
+
+```java
+@Route(path = "/dashboard")
+@Stateful
+public class DashboardPage extends AppPage implements Serializable {
+
+    @State
+    public String username = "";
+
+    @State
+    public List<String> notifications = new ArrayList<>();
+
+    @Call
+    public void dismiss(String id) {
+        notifications.remove(id);
+        // state is automatically persisted after the @Call returns
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <div>
+              <h1>Hello, {{username}}</h1>
+              <ul>
+                {{#each notifications as n}}
+                  <li>{{n}}</li>
+                {{/each}}
+              </ul>
+            </div>
+            """;
+    }
+}
+```
+
+## How it works
+
+After every `@Call` invocation, JReactive checks whether the component is `@Stateful`. If so, it serializes the component instance using Java serialization and writes the byte stream to the configured `StateStore` bean (e.g. a Redis-backed implementation). On reconnect or server restart, JReactive reads the stored bytes, deserializes the component, and resumes the session without data loss.
+
+This allows you to run multiple JReactive instances behind a load balancer with sticky sessions or with shared Redis — the component state follows the user regardless of which node handles the request.
+
+## Notes and warnings
+
+<Note>
+  `@Stateful` requires a `StateStore` bean on the classpath. Add the `jreactive-store-redis` dependency (or provide a custom `StateStore` implementation) to activate serialization.
+</Note>
+
+<Note>
+  `HtmlComponent` already implements `java.io.Serializable`. If your component class introduces additional fields, those fields must also be serializable.
+</Note>
+
+<Warning>
+  All `@State` fields in a `@Stateful` component must be serializable. Non-serializable objects (such as database connections, thread locals, or Spring beans) will cause a `NotSerializableException` at runtime.
+</Warning>
+
+<Note>
+  If you only need in-memory state that lives in the JVM heap (without Redis), use `@StatefulRam` instead. `@StatefulRam` never serializes to an external store and is ideal for combining with `@Client`.
+</Note>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="@Stateless" href="/annotations/stateless">
+    Zero server memory — state is encoded in the HTML payload.
+  </Card>
+  <Card title="@State" href="/annotations/state">
+    Mark individual fields as reactive state.
+  </Card>
+  <Card title="@Route" href="/annotations/route">
+    Register a component as a URL-addressable route.
+  </Card>
+  <Card title="@Client" href="/annotations/client">
+    Activate client-side rendering for a component.
+  </Card>
+</CardGroup>

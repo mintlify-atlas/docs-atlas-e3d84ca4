@@ -1,0 +1,167 @@
+---
+title: JModal
+description: A reactive overlay dialog whose visibility is controlled entirely by server state, with a backdrop, slide-in animation, and a slot for arbitrary body content.
+---
+
+## Class signature
+
+```java
+public class JModal extends HtmlComponent
+```
+
+Located in `com.ciro.jreactive.JModal`.
+
+## Attributes
+
+<ParamField path="visible" type="boolean" default="false">
+  Controls whether the modal is rendered. When `false` the entire backdrop and dialog are absent from the DOM. When `true` they are injected and the page scroll is locked via a `client:mount` hook.
+</ParamField>
+
+<ParamField path="title" type="String" default="Mensaje del Sistema">
+  Text shown in the modal header as a `<strong>` element.
+</ParamField>
+
+<ParamField path="onClose" type="String" default="">
+  A `@Call` expression wired to the close button (`×`) in the modal header. The parent is responsible for setting `visible` to `false` inside this handler.
+</ParamField>
+
+## Template usage
+
+```html
+<!-- Basic usage -->
+<JModal :visible="isOpen" title="Confirm action" onClose="closeModal()">
+    <p>Are you sure you want to continue?</p>
+</JModal>
+
+<!-- With action buttons in the body slot -->
+<JModal :visible="isOpen" title="Delete item" onClose="closeModal()">
+    <p>This cannot be undone.</p>
+    <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+        <button @click="closeModal()">Cancel</button>
+        <button @click="confirmDelete()">Delete</button>
+    </div>
+</JModal>
+```
+
+## Open/close state management
+
+`JModal` does not manage its own open/close state. The parent component holds a boolean `@State` field and passes it via `:visible`. This keeps the dialog fully server-controlled — you open or close it from any `@Call` method by changing the state field.
+
+<Steps>
+  <Step title="Declare a boolean state field in the parent">
+    ```java
+    @State public boolean isModalOpen = false;
+    ```
+  </Step>
+  <Step title="Write @Call methods to open and close">
+    ```java
+    @Call
+    public void openModal() {
+        isModalOpen = true;
+    }
+
+    @Call
+    public void closeModal() {
+        isModalOpen = false;
+    }
+    ```
+  </Step>
+  <Step title="Wire the template">
+    ```html
+    <button @click="openModal()">Open dialog</button>
+
+    <JModal :visible="isModalOpen" title="My dialog" onClose="closeModal()">
+        <!-- body content goes here -->
+    </JModal>
+    ```
+  </Step>
+</Steps>
+
+## Scroll lock
+
+When `visible` becomes `true`, `JModal` runs the following browser-side expression on mount:
+
+```js
+document.body.style.overflow = 'hidden'
+```
+
+And this expression on unmount:
+
+```js
+document.body.style.overflow = ''
+```
+
+These are declared with `client:mount` and `client:unmount` directives directly on the backdrop element — no JavaScript file is needed.
+
+## Full usage example
+
+The following page mirrors the `ModalTestPage` demo from the demo application:
+
+```java
+@Route(path = "/confirm")
+@StatefulRam
+public class ConfirmPage extends AppPage {
+
+    @State public String status = "Waiting...";
+    @State public boolean isModalOpen = false;
+
+    @Call
+    public void openModal() {
+        isModalOpen = true;
+    }
+
+    @Call
+    public void closeModal() {
+        isModalOpen = false;
+    }
+
+    @Call
+    public void confirm() {
+        status = "Action confirmed!";
+        isModalOpen = false;
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <div style="padding: 50px; text-align: center;">
+              <p>Status: <strong>{{status}}</strong></p>
+
+              <button @click="openModal()">Open dialog</button>
+
+              <JModal title="Confirm" :visible="isModalOpen" onClose="closeModal()">
+                <p>Do you want to proceed?</p>
+                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                  <button @click="closeModal()">Cancel</button>
+                  <button @click="confirm()">Yes, confirm</button>
+                </div>
+              </JModal>
+            </div>
+            """;
+    }
+}
+```
+
+## CSS customization
+
+`JModal` ships with its own `JModal.css` file, which is scoped and injected automatically. You can override these classes:
+
+| Class | Element |
+|---|---|
+| `jrx-modal-backdrop` | Fixed full-screen overlay `<div>` |
+| `jrx-modal-content` | Dialog panel `<div>` |
+| `jrx-modal-header` | Header row containing the title and close button |
+| `jrx-modal-body` | Body wrapper `<div>` (where slot content is rendered) |
+
+The dialog entrance animation is defined by the `@keyframes jrx-modal-slide` rule in `JModal.css`. Override it to change the animation:
+
+```css
+@keyframes jrx-modal-slide {
+    from { transform: translateY(-20px); opacity: 0; }
+    to   { transform: translateY(0);     opacity: 1; }
+}
+```
+
+<Warning>
+  Always implement `onClose` in the parent and set `visible` to `false` there. If you leave `onClose` empty, the close button renders but clicking it has no effect.
+</Warning>

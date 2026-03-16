@@ -1,0 +1,141 @@
+---
+title: JTable
+description: A reactive data table component with configurable column headers, server-pushed row data, and an optional row-click handler.
+---
+
+## Class signature
+
+```java
+public class JTable extends HtmlComponent
+```
+
+Located in `com.ciro.jreactive.JTable`.
+
+## Attributes
+
+<ParamField path="columns" type="List<String>" default="new ArrayList<>()">
+  An ordered list of column header strings. Each string is rendered as a `<th>` in the table head. Annotated with `@Bind`, so pass it from the parent with `:columns="myHeaders"`.
+</ParamField>
+
+<ParamField path="data" type="List<? extends Serializable>" default="new ArrayList<>()">
+  The list of row objects to render. Annotated with `@State`, so the table re-renders automatically when this list changes on the server. Each object in the list is exposed to child slot content as `row`.
+</ParamField>
+
+<ParamField path="onRowClick" type="String" default="">
+  A `@Call` expression attached to the `@click` event of every `<tr>` element. Annotated with `@Bind`.
+</ParamField>
+
+## Template usage
+
+Place `<td>` elements inside `<JTable>` as slot content. JReactive iterates over `data` and renders the slot once per row, exposing the current row object via the `expose` attribute:
+
+```html
+<JTable :columns="headers" :data="users" expose="row">
+    <td>{{row.id}}</td>
+    <td>{{row.name}}</td>
+    <td>{{row.email}}</td>
+</JTable>
+```
+
+<Note>
+  The `expose="row"` attribute on `<JTable>` makes the current iteration object available as `row` inside the slot. Choose any name you like — it must match the `{{row.field}}` references in your `<td>` cells.
+</Note>
+
+## Row actions via slot
+
+You can place interactive elements, including `@click` handlers that reference the current row, directly inside the slot:
+
+```html
+<JTable :columns="headers" :data="users" expose="row">
+    <td>{{row.id}}</td>
+    <td>{{row.name}}</td>
+    <td>
+        <button @click="deleteUser(row)" style="color: red; border: none; background: none; cursor: pointer;">
+            Delete
+        </button>
+    </td>
+</JTable>
+```
+
+## Empty state
+
+When `data` is empty, `JTable` renders a single full-width row with a centered message:
+
+> No hay datos disponibles
+
+Override `template()` to replace this message or translate it.
+
+## Full usage example
+
+```java
+@Route(path = "/users")
+@Client
+public class UserTablePage extends AppPage {
+
+    public static class UserRow implements Serializable {
+        public int id;
+        public String name;
+        public String email;
+
+        public UserRow(int id, String name, String email) {
+            this.id = id; this.name = name; this.email = email;
+        }
+    }
+
+    @Bind public List<String> headers = List.of("ID", "Name", "Email", "Actions");
+
+    @State public List<UserRow> users = new ArrayList<>(List.of(
+        new UserRow(1, "Alice", "alice@example.com"),
+        new UserRow(2, "Bob",   "bob@example.com")
+    ));
+
+    @State int counter = 10;
+
+    @Call
+    public void addUser() {
+        counter++;
+        users.add(new UserRow(counter, "User " + counter, "user" + counter + "@example.com"));
+    }
+
+    @Call
+    public void deleteUser(UserRow user) {
+        users.removeIf(u -> u.id == user.id);
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <div style="padding: 20px;">
+              <button @click="addUser()" style="margin-bottom: 15px;">Add user</button>
+
+              <JTable :columns="headers" :data="users" expose="row">
+                <td>{{row.id}}</td>
+                <td>{{row.name}}</td>
+                <td>{{row.email}}</td>
+                <td>
+                  <button @click="deleteUser(row)">Delete</button>
+                </td>
+              </JTable>
+
+              <p>Total: {{users.size}} users</p>
+            </div>
+            """;
+    }
+}
+```
+
+## CSS customization
+
+`JTable` embeds its default styles as a `<style>` block inside its own template. You can override any of the following classes in your component's scoped CSS:
+
+| Class | Element |
+|---|---|
+| `jrx-table-container` | Scroll wrapper `<div>` |
+| `jrx-table` | The `<table>` element |
+| `jrx-table th` | Header cells |
+| `jrx-table td` | Body cells |
+| `jrx-table tr:hover` | Row hover highlight |
+
+<Tip>
+  The default styles set `cursor: pointer` on row hover. If you do not use `onRowClick`, override this rule to remove the pointer cursor.
+</Tip>

@@ -1,0 +1,130 @@
+---
+title: "Redis state store"
+description: "Persist component state in Redis for distributed deployments and horizontal scaling."
+---
+
+By default, JReactive stores component state in an in-process Caffeine cache. This works well for a single node but state is lost on restart and cannot be shared across multiple instances. Switching to the Redis state store enables:
+
+- **Horizontal scaling** — multiple application instances share the same state.
+- **Session persistence** — state survives application restarts.
+- **Distributed sessions** — users can connect to any node in a cluster.
+
+<Note>
+  For single-node deployments the default `CaffeineStateStore` is simpler and faster. Only add Redis when you need one of the capabilities above.
+</Note>
+
+## Add the dependency
+
+```xml pom.xml
+<dependency>
+  <groupId>com.ciro</groupId>
+  <artifactId>jreactive-store-redis</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+</dependency>
+```
+
+The module uses [Jedis](https://github.com/redis/jedis) as the Redis client and does not require Spring Data Redis.
+
+## Configure the connection
+
+Set the Redis host and port in `application.properties` (or `application.yml`) and choose the store type:
+
+<CodeGroup>
+
+```properties application.properties
+jreactive.redis.host=localhost
+jreactive.redis.port=6379
+jreactive.store.type=redis
+```
+
+```yaml application.yml
+jreactive:
+  redis:
+    host: localhost
+    port: 6379
+  store:
+    type: redis
+```
+
+</CodeGroup>
+
+### Store type options
+
+| `jreactive.store.type` | Behaviour |
+|---|---|
+| *(not set)* | Uses the default `CaffeineStateStore` (in-memory, single node). |
+| `redis` | All state is read from and written to Redis directly. |
+| `hybrid` | L1 Caffeine cache in front of Redis. Reduces Redis round-trips for hot state. |
+
+### Serialization
+
+By default, component state is serialized with Jackson JSON. You can switch to the faster [FST](https://github.com/RuedigerMoeller/fast-serialization) binary format:
+
+```properties application.properties
+jreactive.store.serialization=fst
+```
+
+| `jreactive.store.serialization` | Format |
+|---|---|
+| `json` (default) | Jackson JSON — readable, interoperable |
+| `fst` | FST binary — faster, smaller payload |
+
+## Mark components as stateful
+
+Annotate the components whose state you want persisted in Redis with `@Stateful`:
+
+```java MyPage.java
+import com.ciro.jreactive.HtmlComponent;
+import com.ciro.jreactive.State;
+import com.ciro.jreactive.annotations.Call;
+import com.ciro.jreactive.annotations.Stateful;
+import com.ciro.jreactive.router.Route;
+
+@Route(path = "/my-page")
+@Stateful
+public class MyPage extends HtmlComponent {
+
+    @State
+    public int count = 0;
+
+    @Call
+    public void increment() {
+        count++;
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <div>
+                <h1>Count: {{count}}</h1>
+                <button @click="increment()">+1</button>
+            </div>
+        """;
+    }
+}
+```
+
+<Warning>
+  Every `@State` field on a `@Stateful` component must be serializable. Ensure all field types implement `java.io.Serializable` (or use the FST serializer, which has broader support). Non-serializable fields will cause errors at runtime when the component is saved to Redis.
+</Warning>
+
+## How auto-configuration works
+
+`RedisStoreConfig` is a Spring `@Configuration` class inside `jreactive-store-redis`. It reads the `jreactive.redis.*` and `jreactive.store.*` properties and registers the appropriate `StateStore` bean as `@Primary`, overriding the default `CaffeineStateStore` provided by `JReactiveAutoConfiguration`.
+
+The `RedisStateStore` connects directly to Redis using a `JedisPool`. It does not require a `RedisConnectionFactory` or Spring Data Redis on the classpath.
+
+## Hybrid store and multi-node pub/sub
+
+When you set `jreactive.store.type=hybrid`, JReactive creates a `HybridStateStore` (L1 Caffeine + L2 Redis) and also registers a `RedisMessageBroker` bean. The message broker propagates state change notifications across nodes using Redis Pub/Sub, keeping L1 caches consistent.
+
+You can control the consistency mode:
+
+```properties application.properties
+jreactive.store.consistency=strong
+```
+
+| `jreactive.store.consistency` | Behaviour |
+|---|---|
+| `strong` (default) | Every write is synchronously confirmed in Redis before returning. |
+| `eventual` | Writes go to L1 immediately and sync to Redis asynchronously. Faster, but brief inconsistencies are possible. |

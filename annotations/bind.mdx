@@ -1,0 +1,114 @@
+---
+title: "@Bind"
+description: "Expose a field to the template context without automatically triggering a re-render on change."
+---
+
+`@Bind` exposes a field or `ReactiveVar` to the template context. Unlike `@State`, a `@Bind` field does **not** automatically trigger a re-render when its value changes — it is intended for passing data to templates or child components.
+
+## Signature
+
+```java
+@Retention(RUNTIME)
+@Target(FIELD)
+public @interface Bind {
+    /** Key to expose; if left empty, uses the field name */
+    String value() default "";
+    /** If true, ignores client→server changes */
+    boolean readOnly() default false;
+}
+```
+
+## Attributes
+
+<ParamField path="value" type="string" default="">
+  The key name used in template expressions. If left empty, JReactive uses the Java field name.
+</ParamField>
+
+<ParamField path="readOnly" type="boolean" default="false">
+  When `true`, any change sent from the client is ignored. Use this for props passed down from a parent component that the child should not mutate.
+</ParamField>
+
+## Usage
+
+### Binding a plain String
+
+```java
+@Route(path = "/users/{id}")
+public class UserPage extends AppPage {
+
+    @Param("id")
+    @Bind String userId;
+
+    @Override
+    protected String template() {
+        return """
+            <div>
+              <p>User ID: {{userId}}</p>
+            </div>
+            """;
+    }
+}
+```
+
+### Binding a reactive variable
+
+```java
+public class UserPage extends AppPage {
+
+    @Bind public Type<String> name = $("Anonymous");
+
+    @Override
+    protected void onInit() {
+        name.set("Ciro (Admin)");
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <div>
+              <h2>User {{name}}</h2>
+            </div>
+            """;
+    }
+}
+```
+
+### Read-only prop from a parent component
+
+```java
+public class ProfileCard extends HtmlComponent {
+
+    @Bind(readOnly = true)
+    public String username;
+}
+```
+
+## How it works
+
+When JReactive builds the template context for a component, every `@Bind` field is added to the rendering context under its logical key. This makes the value available in `{{...}}` expressions and directives.
+
+Because `@Bind` does not register the field in the reactive change-tracking pipeline, updates to the value do not schedule a re-render on their own. You can still cause a re-render by calling `updateState()` on a related `@State` field.
+
+## Notes
+
+<Note>
+  Use `readOnly = true` for props that a parent passes to a child component. This prevents the client-side runtime from sending unwanted updates back to the server for that field.
+</Note>
+
+<Note>
+  `@Bind` and `@State` can coexist on different fields within the same component. Use `@State` for values that should drive re-renders and `@Bind` for values that are read-only or set once during initialization.
+</Note>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="@State" href="/annotations/state">
+    Mark a field as reactive state that drives re-renders.
+  </Card>
+  <Card title="@Call" href="/annotations/call">
+    Mark a method as callable from template event directives.
+  </Card>
+  <Card title="@Route" href="/annotations/route">
+    Register a component as a URL-addressable route.
+  </Card>
+</CardGroup>

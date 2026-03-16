@@ -1,0 +1,120 @@
+---
+title: "@Route"
+description: "Register a component class as a URL-addressable route discovered at application startup."
+---
+
+`@Route` maps a component class to a URL path. Components annotated with `@Route` are discovered by JReactive's `RouteProvider` at startup and registered in the routing table, making them accessible via the browser's address bar.
+
+## Signature
+
+```java
+@Target(TYPE)
+@Retention(RUNTIME)
+public @interface Route {
+    String path(); // e.g. "/about" (must start with /)
+}
+```
+
+## Attributes
+
+<ParamField path="path" type="string" required>
+  The URL path for this component. Must start with `/`. Supports path variables using curly-brace syntax, for example `/users/{id}`.
+</ParamField>
+
+## Usage
+
+### Static path
+
+```java
+@Route(path = "/")
+public class HomePage extends AppPage {
+
+    @Override
+    protected String template() {
+        return """
+            <div class="page">
+              <h1>Welcome</h1>
+              <a href="/users/10" data-router>Go to profile</a>
+            </div>
+            """;
+    }
+}
+```
+
+### Path with a variable
+
+Use `{paramName}` in the path and add `@Param` on the matching field to have JReactive inject the extracted value:
+
+```java
+@Route(path = "/users/{id}")
+public class UserPage extends AppPage {
+
+    @Param("id")
+    @Bind String userId;
+
+    @Override
+    protected void onInit() {
+        // userId is already populated when onInit() runs
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <div>
+              <h2>User ID: {{userId}}</h2>
+            </div>
+            """;
+    }
+}
+```
+
+### Layout
+
+Combine `@Route` with `@Layout` to wrap a page inside a shared layout component:
+
+```java
+@Layout(MainLayout.class)
+public abstract class AppPage extends HtmlComponent {}
+
+@Route(path = "/about")
+public class AboutPage extends AppPage {
+    // Rendered inside MainLayout's <slot />
+}
+```
+
+## How it works
+
+At startup, JReactive scans the classpath for classes annotated with `@Route` and registers each one in the routing table keyed by its path pattern. When a navigation request arrives (either a full page load or a client-side `data-router` link), JReactive resolves the matching component, instantiates it for the session, and renders it.
+
+Path variables are extracted from the URL before `onInit()` is called, so `@Param`-annotated fields are populated and ready to use inside `onInit()`.
+
+## Notes
+
+<Note>
+  Path variables in curly-brace notation (e.g. `/users/{id}`) require a corresponding `@Param("id")` annotation on a field in the component to receive the extracted value.
+</Note>
+
+<Note>
+  Route paths must start with `/`. JReactive will throw a configuration error at startup if a path is missing the leading slash.
+</Note>
+
+<Note>
+  You can use `@UrlParam` to bind query-string parameters (e.g. `?search=xyz`) to a component field. `@UrlParam` is recommended alongside `@State` or `@Bind`.
+</Note>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="@Bind" href="/annotations/bind">
+    Expose a field to the template, including path parameter values.
+  </Card>
+  <Card title="@Stateful" href="/annotations/stateful">
+    Persist component state across restarts with Redis.
+  </Card>
+  <Card title="@Stateless" href="/annotations/stateless">
+    Encode component state as a signed token in the HTML.
+  </Card>
+  <Card title="@DomMode" href="/annotations/dom-mode">
+    Control whether the server or the client manages DOM updates.
+  </Card>
+</CardGroup>

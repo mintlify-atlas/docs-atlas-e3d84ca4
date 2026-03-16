@@ -1,0 +1,123 @@
+---
+title: JCard
+description: A content container component with an optional titled header, a default body slot, and a named footer slot.
+---
+
+## Class signature
+
+```java
+public class JCard extends HtmlComponent
+```
+
+Located in `com.ciro.jreactive.JCard`.
+
+## Attributes
+
+<ParamField path="title" type="Type<String>" default="">
+  When non-empty, renders a header section containing an `<h2 class="jrx-card-title">` element.
+</ParamField>
+
+<ParamField path="subtitle" type="Type<String>" default="">
+  When non-empty and a `title` is also set, renders a `<p class="jrx-card-subtitle">` below the title inside the header.
+</ParamField>
+
+<ParamField path="variant" type="Type<String>" default="flat">
+  A CSS modifier applied to the root element as `jrx-card-{variant}`. Use any value that matches a class in your stylesheet — for example `flat`, `outlined`, or `elevated`.
+</ParamField>
+
+<ParamField path="hoverable" type="Type<Boolean>" default="false">
+  Declared on the component. Override `template()` to conditionally apply a hover class based on this value.
+</ParamField>
+
+## Slots
+
+`JCard` exposes two slots:
+
+| Slot | Description |
+|---|---|
+| Default (`<slot />`) | Rendered inside `<div class="jrx-card-body">`. Place your main content here. |
+| Named footer (`<slot name="footer" />`) | Rendered inside `<div class="jrx-card-footer">`. Use this for action buttons or metadata. |
+
+## Template usage
+
+```html
+<!-- Card with title only -->
+<JCard title="User profile">
+    <p>Hello, {{user.name}}</p>
+</JCard>
+
+<!-- Card with title and subtitle -->
+<JCard title="Dashboard" subtitle="Overview of your activity">
+    <!-- body content -->
+</JCard>
+
+<!-- Card with footer slot -->
+<JCard title="Confirm deletion">
+    <p>Are you sure you want to delete this record?</p>
+    <template slot="footer">
+        <button @click="cancel()">Cancel</button>
+        <button @click="confirm()">Delete</button>
+    </template>
+</JCard>
+
+<!-- Variant -->
+<JCard title="Notice" variant="outlined">
+    <p>Your session will expire in 5 minutes.</p>
+</JCard>
+```
+
+## Usage example
+
+`JCard` is commonly used as a layout wrapper around forms:
+
+```java
+@Route(path = "/settings")
+@StatefulRam
+public class SettingsPage extends AppPage {
+
+    public static class ProfileForm implements Serializable {
+        public String displayName;
+        public String bio;
+    }
+
+    @State ProfileForm form = new ProfileForm();
+    @State String saved = "";
+
+    @Call
+    public void saveProfile(ProfileForm form) {
+        saved = "Profile updated for: " + form.displayName;
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <JCard title="Profile settings" subtitle="Update your public profile">
+
+              <JForm onSubmit="saveProfile(form)">
+                <JInput :field="form.displayName" label="Display name" required="true" />
+                <JInput :field="form.bio"         label="Bio"          />
+              </JForm>
+
+              <p>{{saved}}</p>
+
+            </JCard>
+            """;
+    }
+}
+```
+
+## CSS customization
+
+| Class | Element |
+|---|---|
+| `jrx-card` | Root `<div>` |
+| `jrx-card-{variant}` | Co-applied variant modifier on the root |
+| `jrx-card-header` | Header `<div>` — only rendered when `title` is set |
+| `jrx-card-title` | Title `<h2>` |
+| `jrx-card-subtitle` | Subtitle `<p>` |
+| `jrx-card-body` | Body `<div>` wrapping the default slot |
+| `jrx-card-footer` | Footer `<div>` wrapping the named footer slot |
+
+<Note>
+  The footer `<div>` is always rendered, even when the `footer` slot is empty. If you want to hide an empty footer, override `template()` to add a conditional block.
+</Note>

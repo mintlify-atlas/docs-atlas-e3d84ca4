@@ -1,0 +1,206 @@
+---
+title: Reactive bindings
+description: Expose fields to templates with @Bind, observe changes with ReactiveVar, and wire DOM events with @click, @submit, and :prop.
+---
+
+Reactive bindings are the bridge between Java fields and the HTML template. You expose data with `@Bind` and `ReactiveVar`, and you respond to user interactions with event directives.
+
+## Exposing fields with `@Bind`
+
+Annotate a field with `@Bind` to make its value available in the template as a mustache expression:
+
+```java
+public class GreetingCard extends HtmlComponent {
+
+    @Bind
+    public String message = "Hello, world!";
+
+    @Override
+    protected String template() {
+        return "<p>{{message}}</p>";
+    }
+}
+```
+
+By default the binding key is the field name. Override it by passing a value:
+
+```java
+@Bind("greeting")
+public String message = "Hello";
+// template uses {{greeting}}
+```
+
+Add `readOnly = true` to prevent the client from pushing changes back to this field:
+
+```java
+@Bind(readOnly = true)
+public String serverTimestamp = "...";
+```
+
+## `ReactiveVar<T>`
+
+`ReactiveVar<T>` is the core observable holder. You can use it directly as a field type instead of a plain value:
+
+```java
+public final class ReactiveVar<T> {
+    public T get()                          // read current value
+    public void set(T newValue)             // write + notify listeners
+    public Runnable onChange(Consumer<T> l) // subscribe; returns unsubscribe handle
+    public void clearListeners()            // remove all subscriptions
+}
+```
+
+Example — a clock that pushes updates from a background timer:
+
+```java
+public class ClockLeaf extends HtmlComponent {
+
+    @Bind
+    public Type<String> clock = $("--:--:--");
+
+    @Override
+    protected void onMount() {
+        timer = new Timer(true);
+        timer.scheduleAtFixedRate(new TimerTask() {
+            @Override public void run() {
+                clock.set(LocalTime.now().withNano(0).toString());
+            }
+        }, 1000, 1000);
+    }
+}
+```
+
+Calling `clock.set(...)` notifies the framework, which patches the DOM in the browser without a full page reload.
+
+## `Type<T>`
+
+`Type<T>` is a thin record wrapper around `ReactiveVar<T>`. Use it when you want a concise field declaration that exposes both `.get()` and `.set()` without repeating the generic type:
+
+```java
+import static com.ciro.jreactive.Type.$;
+
+public class ClockLeaf extends HtmlComponent {
+
+    @Bind public Type<String> greet = $("Hello");
+    @Bind public Type<String> clock = $("--:--:--");
+}
+```
+
+`Type.of(initial)` and the shorthand `$(initial)` both create a new `Type<T>` backed by a fresh `ReactiveVar<T>`.
+
+Access the underlying `ReactiveVar` via `.rx()` if you need to subscribe to changes:
+
+```java
+greet.rx().onChange(newVal -> System.out.println("Greeting changed to: " + newVal));
+```
+
+## Template syntax
+
+### Mustache interpolation
+
+Use `{{fieldName}}` to interpolate a bound value:
+
+```html
+<p>Count: {{count}}</p>
+<p>Time: {{clock}}</p>
+```
+
+For POJO fields you can traverse properties with dot notation:
+
+```html
+<p>{{user.name}}</p>
+<p>{{address.city}}</p>
+```
+
+### `{{#each}}`
+
+Iterate over a list:
+
+```html
+{{#each items as item}}
+  <li>{{item}}</li>
+{{/each}}
+```
+
+## Event directives
+
+Event directives bind DOM events to `@Call` methods on the component. The syntax is `@eventName="methodName()"`.
+
+### `@click`
+
+```html
+<button @click="increment()">+1</button>
+<button @click="reset()">Reset</button>
+```
+
+### `@submit`
+
+```html
+<form @submit="save()">...</form>
+```
+
+### `@input`
+
+```html
+<input @input="update()" name="greet" placeholder="Type greeting">
+```
+
+All methods wired via event directives must be annotated with `@Call` on the Java side:
+
+```java
+@Call
+public void increment() {
+    count++;
+    updateState("count");
+}
+```
+
+### `data-call` attribute
+
+`data-call` is an alternative to `@click` for scenarios where you need to attach the handler to a non-interactive element or compose it dynamically:
+
+```html
+<div data-call="selectItem()">Click me</div>
+```
+
+## Passing props to children with `:prop`
+
+Use `:propName="expression"` to pass a value from the parent's bindings into a child component's field:
+
+```html
+<!-- Parent template -->
+<HelloLeaf ref="hello" />
+<ClockLeaf ref="reloj" :greet="hello.newFruit" />
+```
+
+The child component must have a `@Bind`-annotated field with the matching name (`greet` in this case).
+
+## Toggle example
+
+A minimal component that toggles a boolean flag and reflects it in the template:
+
+```java
+public class ToggleBox extends HtmlComponent {
+
+    @State
+    public boolean visible = false;
+
+    @Call
+    public void toggle() {
+        visible = !visible;
+        updateState("visible");
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <div>
+              <button @click="toggle()">Toggle</button>
+              {{#if visible}}
+                <p>Now you see me!</p>
+              {{/if}}
+            </div>
+            """;
+    }
+}
+```

@@ -1,0 +1,126 @@
+---
+title: StateStore
+description: The SPI interface for persisting and retrieving component instances across requests.
+keywords: [StateStore, CaffeineStateStore, Redis, state persistence, JReactive]
+---
+
+`StateStore` is the interface JReactive uses to persist and retrieve component instances between HTTP requests and WebSocket messages. Each component tree is stored by a `(sessionId, path)` key and restored when an event arrives for that session.
+
+```java
+public interface StateStore
+```
+
+---
+
+## Methods
+
+### get(String sessionId, String path)
+
+```java
+HtmlComponent get(String sessionId, String path)
+```
+
+Retrieves a component instance for the given session and path. Returns `null` if no component is stored for that key.
+
+<ParamField path="sessionId" type="string" required>
+  The session identifier of the connected client.
+</ParamField>
+
+<ParamField path="path" type="string" required>
+  The route path associated with the component (e.g. `/dashboard`).
+</ParamField>
+
+### put(String sessionId, String path, HtmlComponent component)
+
+```java
+void put(String sessionId, String path, HtmlComponent component)
+```
+
+Stores a component instance for the given session and path, replacing any existing entry.
+
+### replace(String sessionId, String path, HtmlComponent component, long expectedVersion)
+
+```java
+boolean replace(String sessionId, String path, HtmlComponent component, long expectedVersion)
+```
+
+Atomically replaces a component only if its current version matches `expectedVersion`. Implements optimistic locking to prevent lost updates when two concurrent events modify the same component.
+
+Returns `true` if the replacement succeeded, `false` if there was a version conflict.
+
+<ParamField path="sessionId" type="string" required>
+  The session identifier.
+</ParamField>
+
+<ParamField path="path" type="string" required>
+  The route path.
+</ParamField>
+
+<ParamField path="component" type="HtmlComponent" required>
+  The new component state to store.
+</ParamField>
+
+<ParamField path="expectedVersion" type="long" required>
+  The version the caller read before making changes. Pass `0` to create a new entry.
+</ParamField>
+
+### remove(String sessionId, String path)
+
+```java
+void remove(String sessionId, String path)
+```
+
+Removes the component stored at the given session and path.
+
+### removeSession(String sessionId)
+
+```java
+void removeSession(String sessionId)
+```
+
+Removes **all** components belonging to the given session. Call this when a client disconnects.
+
+---
+
+## Built-in implementations
+
+<Columns cols={2}>
+  <Card title="CaffeineStateStore" icon="memory">
+    In-memory store backed by Caffeine. This is the default implementation when no custom bean is provided. Entries expire after 30 minutes of inactivity and the cache holds a maximum of 10,000 entries. Components are automatically unmounted (`_unmountRecursive()`) on cache eviction.
+  </Card>
+  <Card title="RedisStateStore" icon="database">
+    Distributed store backed by Redis, available in the `jreactive-store-redis` module. Use this for horizontally scaled deployments where component state must survive server restarts or be accessible from multiple nodes.
+  </Card>
+</Columns>
+
+### CaffeineStateStore defaults
+
+| Setting | Default |
+|---|---|
+| Expiry | 30 minutes after last access |
+| Max entries | 10,000 |
+| On eviction | `_unmountRecursive()` called on the component |
+
+---
+
+## Providing a custom StateStore
+
+Register a Spring bean of type `StateStore` to replace the default `CaffeineStateStore`:
+
+```java
+@Configuration
+public class JrxStoreConfig {
+
+    // Replace the in-memory default with the Redis-backed store
+    @Bean
+    public StateStore stateStore(RedisTemplate<String, byte[]> redis) {
+        return new RedisStateStore(redis);
+    }
+}
+```
+
+JReactive's auto-configuration detects the bean and uses it in place of the default. You can also implement `StateStore` directly for custom backends (databases, Hazelcast, etc.).
+
+<Tip>
+See the [Redis state store guide](/guides/redis-state-store) for a step-by-step setup with `jreactive-store-redis`.
+</Tip>

@@ -1,0 +1,137 @@
+---
+title: "@State"
+description: "Mark a field as reactive state that JReactive tracks and exposes to templates."
+---
+
+`@State` marks a component field as a reactive state root. JReactive wraps the value internally and re-renders the component whenever the state changes.
+
+## Signature
+
+```java
+@Retention(RUNTIME)
+@Target(FIELD)
+public @interface State {
+    /** Logical name; if empty, uses the field name */
+    String value() default "";
+}
+```
+
+## Attributes
+
+<ParamField path="value" type="string" default="">
+  The logical name exposed to templates. If left empty, JReactive uses the Java field name.
+</ParamField>
+
+## Usage
+
+### String and primitive fields
+
+```java
+@Route(path = "/counter")
+public class CounterPage extends HtmlComponent {
+
+    @State
+    public int count = 0;
+
+    @State
+    public String title = "My Counter";
+
+    @Call
+    public void increment() {
+        count++;
+        // @Call triggers re-render automatically
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <div>
+              <h1>{{title}}</h1>
+              <p>Count: {{count}}</p>
+              <button @click="increment()">+1</button>
+            </div>
+            """;
+    }
+}
+```
+
+### List field
+
+JReactive auto-wraps `List`, `Map`, and `Set` fields in smart reactive proxies that track mutations.
+
+```java
+@State
+public List<String> items = new ArrayList<>();
+
+@Call
+public void addItem(String value) {
+    items.add(value);  // SmartList detects the mutation automatically
+    this.newItem = "";
+}
+```
+
+Template:
+
+```html
+<ul>
+  {{#each items as item}}
+    <li>{{item}}</li>
+  {{/each}}
+</ul>
+```
+
+### POJO field
+
+```java
+public static class PageState {
+    public String lastMessage;
+}
+
+@State
+PageState state = new PageState();
+
+@Call
+public void register() {
+    state.lastMessage = "Registration successful";
+    updateState("state");  // required — JReactive cannot detect POJO mutations
+}
+```
+
+## How it works
+
+At startup, JReactive scans each component class for `@State` fields using reflection. Each annotated field is registered in the component's reactive context under the logical name (`value` attribute, or the field name as a fallback).
+
+- **Primitives and Strings** — replaced by assignment trigger a re-render when the `@Call` method returns.
+- **Collections** — `List`, `Map`, and `Set` values are wrapped in `SmartList`, `SmartMap`, and `SmartSet` proxies that detect structural mutations (add, remove, clear) automatically.
+- **POJOs** — JReactive cannot intercept mutations on arbitrary objects. You must call `updateState("fieldName")` to signal that the state has changed.
+
+## Notes and warnings
+
+<Warning>
+  After mutating a POJO field's properties, you must call `updateState("fieldName")` explicitly. Without this call, the template will not re-render.
+</Warning>
+
+<Note>
+  `List`, `Map`, and `Set` fields do **not** require `updateState()` for structural mutations (add, remove, clear). Direct reassignment of the collection reference does require it.
+</Note>
+
+<Note>
+  If you use `@Stateful` on the component, all `@State` fields must implement `java.io.Serializable`.
+</Note>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="@Bind" href="/annotations/bind">
+    Expose a field to the template without triggering re-render.
+  </Card>
+  <Card title="@Call" href="/annotations/call">
+    Mark a method as callable from template event directives.
+  </Card>
+  <Card title="@Stateful" href="/annotations/stateful">
+    Serialize component state to Redis across restarts.
+  </Card>
+  <Card title="@Stateless" href="/annotations/stateless">
+    Encode state as a signed token in the HTML payload.
+  </Card>
+</CardGroup>

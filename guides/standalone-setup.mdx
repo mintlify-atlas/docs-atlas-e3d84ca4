@@ -1,0 +1,121 @@
+---
+title: "Standalone setup (without Spring Boot)"
+description: "Run JReactive on a plain JVM using Undertow, without any Spring Boot dependency."
+---
+
+<Tip>
+  Spring Boot is the recommended integration. Use the standalone module only when you cannot or do not want to use Spring Boot.
+</Tip>
+
+The `jreactive-standalone` module bundles JReactive with [Undertow](https://undertow.io/) as the embedded HTTP and WebSocket server. It has no dependency on Spring.
+
+## Add the dependency
+
+```xml pom.xml
+<dependency>
+  <groupId>com.ciro</groupId>
+  <artifactId>jreactive-standalone</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+</dependency>
+```
+
+The module transitively includes `jreactive-core`, `jreactive-runtime-jvm`, `jreactive-runtime-js`, Undertow, SLF4J Simple, Hibernate Validator, and Jackson.
+
+## Install the component engine
+
+Before starting the server, call `AstComponentEngine.installAsDefault()`. This sets the global rendering strategy that all `HtmlComponent` instances use.
+
+```java Main.java
+package com.example;
+
+import com.ciro.jreactive.AstComponentEngine;
+import com.ciro.jreactive.standalone.JReactiveServer;
+
+public class Main {
+
+    public static void main(String[] args) {
+        AstComponentEngine.installAsDefault();
+
+        JReactiveServer server = new JReactiveServer(8080);
+
+        server.addRoute("/", CounterPage::new);
+
+        server.start();
+    }
+}
+```
+
+`JReactiveServer` creates a `CaffeineStateStore` internally. If you need a different store, construct the server components manually (see below).
+
+## Register routes
+
+Use `server.addRoute(path, factory)` where `factory` is a `Supplier<HtmlComponent>`:
+
+```java
+server.addRoute("/", CounterPage::new);
+```
+
+## Write a component
+
+Components work identically to the Spring Boot integration:
+
+```java CounterPage.java
+package com.example;
+
+import com.ciro.jreactive.HtmlComponent;
+import com.ciro.jreactive.State;
+import com.ciro.jreactive.annotations.Call;
+
+public class CounterPage extends HtmlComponent {
+
+    @State
+    public int count = 0;
+
+    @Call
+    public void increment() {
+        count++;
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <div style="font-family: system-ui, sans-serif; text-align: center; padding: 50px;">
+                <h1>JReactive Standalone</h1>
+                <h2>Count: {{count}}</h2>
+                <button @click="increment()">Click me</button>
+            </div>
+        """;
+    }
+}
+```
+
+## Package as a fat JAR
+
+Use the Maven Shade plugin to produce a self-contained executable JAR:
+
+```xml pom.xml
+<plugin>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-shade-plugin</artifactId>
+  <version>3.5.1</version>
+  <executions>
+    <execution>
+      <phase>package</phase>
+      <goals><goal>shade</goal></goals>
+      <configuration>
+        <transformers>
+          <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+            <mainClass>com.example.Main</mainClass>
+          </transformer>
+          <!-- Required for Hibernate Validator and other SPI providers -->
+          <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+        </transformers>
+      </configuration>
+    </execution>
+  </executions>
+</plugin>
+```
+
+<Note>
+  In standalone mode, WebSocket transport is handled by Undertow's native WebSocket API via `WsEndpoint`. You are responsible for session management, static resource serving, and CORS configuration. The Spring Boot starter handles all of this automatically.
+</Note>

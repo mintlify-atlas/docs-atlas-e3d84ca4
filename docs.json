@@ -1,122 +1,117 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "JReactive",
+  "theme": "linden",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#1D6E4E",
+    "light": "#E8F5EF",
+    "dark": "#0F3D2A"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/cirodeleon-com/jreactive-parent"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/cirodeleon-com/jreactive-parent"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "architecture"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/components",
+              "concepts/state-management",
+              "concepts/reactive-bindings",
+              "concepts/routing",
+              "concepts/rendering-modes"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Annotations Reference",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "annotations/state",
+              "annotations/bind",
+              "annotations/call",
+              "annotations/route",
+              "annotations/stateful",
+              "annotations/stateless",
+              "annotations/client",
+              "annotations/dom-mode"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Guides",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "guides/spring-boot-setup",
+              "guides/standalone-setup",
+              "guides/slots-and-composition",
+              "guides/redis-state-store",
+              "guides/aot-apt"
+            ]
+          },
+          {
+            "group": "UI Components",
+            "pages": [
+              "ui/overview",
+              "ui/jbutton",
+              "ui/jinput",
+              "ui/jform",
+              "ui/jtable",
+              "ui/jmodal",
+              "ui/jselect",
+              "ui/jcheckbox",
+              "ui/jcard"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Core API",
             "pages": [
-              "api-reference/introduction"
+              "api/html-component",
+              "api/reactive-var",
+              "api/type",
+              "api/component-engine",
+              "api/event-bus"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "SPI",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/state-store",
+              "api/component-accessor",
+              "api/jrx-session",
+              "api/jrx-message-broker"
+            ]
+          },
+          {
+            "group": "Smart Collections",
+            "pages": [
+              "api/smart-list",
+              "api/smart-map",
+              "api/smart-set"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

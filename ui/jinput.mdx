@@ -1,0 +1,120 @@
+---
+title: JInput
+description: A labeled form input component with placeholder, help text, required marker, and reactive event bindings.
+---
+
+## Class signature
+
+```java
+public class JInput extends HtmlComponent
+```
+
+Located in `com.ciro.jreactive.JInput`.
+
+## Attributes
+
+<ParamField path="field" type="Type<String>" default="">
+  The `name` attribute written on the `<input>` element. Use dotted notation to bind to a nested state object — for example `"form.email"`. JReactive reads the field name when building the payload for a `@Call` method.
+</ParamField>
+
+<ParamField path="label" type="Type<String>" default="">
+  Text rendered inside the wrapping `<label>` element, above the input.
+</ParamField>
+
+<ParamField path="type" type="Type<String>" default="text">
+  The HTML `type` attribute forwarded to the `<input>` element. Accepts any valid input type: `text`, `email`, `password`, `number`, `tel`, `url`, and so on.
+</ParamField>
+
+<ParamField path="placeholder" type="Type<String>" default="">
+  Placeholder text displayed inside the input when it is empty.
+</ParamField>
+
+<ParamField path="required" type="Type<Boolean>" default="false">
+  When `true`, a red asterisk (`*`) appears next to the label. Pair this with Bean Validation on the server-side DTO for full validation.
+</ParamField>
+
+<ParamField path="disabled" type="Type<Boolean>" default="false">
+  Declared on the component. Override `template()` to forward this to the `<input disabled>` attribute if you need browser-level disabling.
+</ParamField>
+
+<ParamField path="helpText" type="Type<String>" default="">
+  When non-empty, renders a `<small class="jrx-help">` element below the input.
+</ParamField>
+
+<ParamField path="autocomplete" type="Type<String>" default="">
+  Forwarded to the `<input autocomplete>` attribute. Accepts standard HTML autocomplete tokens such as `name`, `email`, `new-password`.
+</ParamField>
+
+<ParamField path="onInput" type="String" default="">
+  A `@Call` expression fired on every keystroke (`@input` DOM event) — for example `"validate(form)"`.
+</ParamField>
+
+<ParamField path="onChange" type="String" default="">
+  A `@Call` expression fired when the input loses focus after its value changed (`@change` DOM event).
+</ParamField>
+
+## Template usage
+
+```html
+<!-- Minimal -->
+<JInput :field="form.name" label="Name" />
+
+<!-- Full options -->
+<JInput
+  :field="form.email"
+  label="Email address"
+  type="email"
+  placeholder="you@example.com"
+  required="true"
+  helpText="We will never share your email."
+  autocomplete="email"
+  onInput="validate(form)"
+/>
+```
+
+## Form binding pattern
+
+`JInput` is designed to work alongside a server-side DTO annotated with Bean Validation. Set `field` to a dotted path that matches a field on your `@State` object. When a `@Call` method accepts that object, JReactive collects all `name="form.*"` values from the DOM and deserializes them into the parameter.
+
+```java
+@Route(path = "/signup")
+@StatefulRam
+@Client
+public class SignupPage extends AppPage {
+
+    public static class SignupForm implements Serializable {
+        @NotBlank public String name;
+        @NotBlank @Email public String email;
+        @NotBlank @Size(min = 8) public String password;
+    }
+
+    @State SignupForm form = new SignupForm();
+    @State String message = "";
+
+    @Call
+    public void register(@Valid SignupForm form) {
+        message = "Welcome, " + form.name;
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <JForm onSubmit="register(form)">
+              <JInput :field="form.name"  label="Name"     type="text"     required="true" />
+              <JInput :field="form.email" label="Email"    type="email"    required="true" />
+              <JInput :field="form.password" label="Password" type="password" required="true" />
+            </JForm>
+            <p>{{message}}</p>
+            """;
+    }
+}
+```
+
+## CSS customization
+
+| Class | Element |
+|---|---|
+| `jrx-field` | Outer wrapper `<div>` |
+| `jrx-label` | Label text `<span>` |
+| `jrx-required` | Required asterisk `<span>` |
+| `jrx-help` | Help text `<small>` |

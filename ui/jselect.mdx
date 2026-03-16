@@ -1,0 +1,169 @@
+---
+title: JSelect
+description: A labeled dropdown select component with typed option items, a placeholder, and a change event binding.
+---
+
+## Class signature
+
+```java
+public class JSelect extends HtmlComponent
+```
+
+Located in `com.ciro.jreactive.JSelect`.
+
+## The `Option` type
+
+`JSelect` uses a nested `Option` class to represent each item in the dropdown:
+
+```java
+public static class Option implements Serializable {
+    public String value;   // submitted value
+    public String label;   // displayed text
+    public boolean disabled;
+}
+```
+
+Build lists of options using the static helper methods on `JSelect`:
+
+```java
+// From a varargs of strings (value == label)
+List<JSelect.Option> sizes = JSelect.from("S", "M", "L", "XL");
+
+// From a Map<String, String> (key = value, value = label)
+List<JSelect.Option> codes = JSelect.from(Map.of("co", "Colombia", "cl", "Chile"));
+
+// From an enum
+List<JSelect.Option> roles = JSelect.fromEnum(Role.class);
+```
+
+## Attributes
+
+<ParamField path="field" type="Type<String>" default="">
+  The `name` attribute written on the `<select>` element. Use dotted notation to bind to a nested state object — for example `"form.country"`.
+</ParamField>
+
+<ParamField path="label" type="Type<String>" default="">
+  Text rendered above the select inside a `<label>` element.
+</ParamField>
+
+<ParamField path="placeholder" type="Type<String>" default="">
+  When non-empty, renders a disabled hidden `<option>` as the first item in the list, prompting the user to make a selection.
+</ParamField>
+
+<ParamField path="required" type="Type<Boolean>" default="false">
+  When `true`, appends a red asterisk (`*`) to the label and sets the `:required` binding on the `<select>` element.
+</ParamField>
+
+<ParamField path="disabled" type="Type<Boolean>" default="false">
+  Forwarded to the `<select>` element via `:disabled`.
+</ParamField>
+
+<ParamField path="helpText" type="Type<String>" default="">
+  When non-empty, renders a `<small class="jrx-help">` element below the select.
+</ParamField>
+
+<ParamField path="options" type="Type<List<Option>>" default="new ArrayList<>()">
+  The list of `JSelect.Option` objects to render as `<option>` elements.
+</ParamField>
+
+<ParamField path="onChange" type="String" default="">
+  A `@Call` expression fired on the `@change` DOM event — for example `"refreshLabel(form)"`.
+</ParamField>
+
+## Template usage
+
+```html
+<!-- Minimal -->
+<JSelect :field="form.country" label="Country" :options="countryOptions" />
+
+<!-- With placeholder and required marker -->
+<JSelect
+  :field="form.role"
+  label="Role"
+  placeholder="Select a role"
+  :options="roleOptions"
+  required="true"
+  helpText="Choose the role that best describes you."
+/>
+
+<!-- Fire a server call when the selection changes -->
+<JSelect
+  :field="form.country"
+  label="Country"
+  :options="countries"
+  onChange="refreshCountryLabel(form)"
+/>
+```
+
+## Full usage example
+
+The following page populates options in `onInit()` and reacts to the user's selection:
+
+```java
+@Route(path = "/signup-country")
+public class SignupCountryPage extends AppPage {
+
+    public static class SignupForm implements Serializable {
+        public String country;
+    }
+
+    @State SignupForm form = new SignupForm();
+    @State String selectedLabel = "";
+
+    @Bind public Type<List<JSelect.Option>> countries = $(Collections.emptyList());
+
+    @Override
+    protected void onInit() {
+        countries.set(List.of(
+            new JSelect.Option("co", "Colombia"),
+            new JSelect.Option("cl", "Chile"),
+            new JSelect.Option("ar", "Argentina")
+        ));
+    }
+
+    @Call
+    public void refreshLabel(SignupForm form) {
+        selectedLabel = countries.get().stream()
+            .filter(o -> Objects.equals(o.value, form.country))
+            .map(o -> o.label)
+            .findFirst().orElse("");
+    }
+
+    @Call
+    public void register(SignupForm form) {
+        // persist form.country
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <section style="max-width: 420px; padding: 16px;">
+              <JSelect
+                :field="form.country"
+                label="Country"
+                :options="countries"
+                placeholder="Select a country"
+                required="true"
+                onChange="refreshLabel(form)"
+              />
+
+              {{#if selectedLabel}}
+                <p>Selected: {{selectedLabel}}</p>
+              {{/if}}
+
+              <JButton label="Register" onClick="register(form)" />
+            </section>
+            """;
+    }
+}
+```
+
+## CSS customization
+
+| Class | Element |
+|---|---|
+| `jrx-field` | Outer wrapper `<div>` |
+| `jrx-label` | Label text `<span>` |
+| `jrx-required` | Required asterisk `<span>` |
+| `jrx-select` | The `<select>` element |
+| `jrx-help` | Help text `<small>` |

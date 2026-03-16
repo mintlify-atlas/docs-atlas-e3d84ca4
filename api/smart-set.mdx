@@ -1,0 +1,125 @@
+---
+title: SmartSet<T>
+description: A Set implementation that automatically notifies JReactive when its contents are mutated.
+keywords: [SmartSet, reactive set, state, mutation tracking, JReactive]
+---
+
+`SmartSet<E>` extends `java.util.HashSet<E>` and intercepts all mutating operations to fire change events. JReactive subscribes to these events to trigger DOM updates without you needing to call `updateState()`.
+
+```java
+public class SmartSet<E> extends HashSet<E>
+```
+
+---
+
+## Automatic wrapping
+
+When you declare a `@State` field of type `Set<E>`, JReactive automatically wraps the initial value in a `SmartSet` at startup:
+
+```java
+public class TagEditor extends HtmlComponent {
+
+    @State
+    public Set<String> tags = new HashSet<>(Set.of("java", "reactive"));
+    //  ^ automatically wrapped in SmartSet at runtime
+
+    @Call
+    public void addTag(String tag) {
+        tags.add(tag); // fires ADD event → DOM updated automatically
+    }
+
+    @Call
+    public void removeTag(String tag) {
+        tags.remove(tag); // fires REMOVE event → DOM updated automatically
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <div class="tags">
+              {{#each tags}}<span class="tag">{{.}}</span>{{/each}}
+            </div>
+            """;
+    }
+}
+```
+
+---
+
+## Constructors
+
+```java
+public SmartSet()
+public SmartSet(Collection<? extends E> c)
+```
+
+Creates an empty `SmartSet` or one populated with the elements of an existing collection.
+
+---
+
+## Tracked mutations
+
+| Method | Event op |
+|---|---|
+| `add(E e)` | `ADD` (only if the element was not already present) |
+| `remove(Object o)` | `REMOVE` (only if the element was present) |
+| `clear()` | `CLEAR` (only if the set was non-empty) |
+| `update(E element)` | `REMOVE` then `ADD` (re-fires for in-place mutations) |
+
+Read-only operations (`contains`, `size`, `iterator`) do not fire events.
+
+---
+
+## The update(E element) method
+
+```java
+public void update(E element)
+```
+
+`SmartSet` adds a method not present in `HashSet`. Call `update(element)` after mutating a member object in-place, when the object reference has not changed:
+
+```java
+// The Tag object reference is the same — add() would be a no-op
+tags.stream().filter(t -> t.getId().equals("java")).findFirst()
+    .ifPresent(t -> t.setLabel("Java 21"));
+tags.update(t); // fires REMOVE + ADD so JReactive re-renders
+```
+
+---
+
+## Change record
+
+```java
+public record Change(String op, Object item)
+```
+
+| Field | Description |
+|---|---|
+| `op` | Operation name: `"ADD"`, `"REMOVE"`, or `"CLEAR"` |
+| `item` | The element added or removed, or `null` for `CLEAR` |
+
+---
+
+## Manual subscription
+
+```java
+public void subscribe(Consumer<Change> listener)
+public void unsubscribe(Consumer<Change> listener)
+```
+
+Subscribe directly to change events for custom side effects:
+
+```java
+@Override
+protected void onMount() {
+    ((SmartSet<String>) tags).subscribe(change -> {
+        if ("ADD".equals(change.op())) {
+            analytics.trackTagAdded(change.item().toString());
+        }
+    });
+}
+```
+
+<Note>
+The listener list is backed by a `CopyOnWriteArrayList`, so subscribing and unsubscribing from multiple threads is safe.
+</Note>

@@ -1,0 +1,165 @@
+---
+title: Components
+description: How to create and use HtmlComponent — the building block of every JReactive UI.
+---
+
+Every JReactive UI is composed of **components**: Java classes that extend `HtmlComponent`. A component owns its template, its state, and its child components. The framework renders it to HTML on the server and pushes live DOM patches to the browser when state changes.
+
+## Defining a component
+
+Extend `HtmlComponent` and override the `template()` method to return your markup:
+
+```java
+public class GreetingCard extends HtmlComponent {
+
+    @Bind
+    public String message = "Hello, world!";
+
+    @Override
+    protected String template() {
+        return """
+            <div class="card">
+              <p>{{message}}</p>
+            </div>
+            """;
+    }
+}
+```
+
+## Component lifecycle
+
+JReactive calls three lifecycle hooks in order:
+
+<Steps>
+  <Step title="onInit()">
+    Called once, the first time the component is created. Use this to set initial field values before the first render — for example, setting a timestamp or reading a config value.
+
+    ```java
+    @Override
+    public void onInit() {
+        clock.set(LocalTime.now().withNano(0).toString());
+    }
+    ```
+  </Step>
+  <Step title="onMount()">
+    Called each time the component becomes visible in the UI (transitions from `UNMOUNTED` to `MOUNTED`). Use this to start timers, subscribe to events, or connect to external resources.
+
+    ```java
+    @Override
+    protected void onMount() {
+        timer = new Timer(true);
+        timer.scheduleAtFixedRate(new TimerTask() {
+            @Override public void run() {
+                clock.set(LocalTime.now().withNano(0).toString());
+            }
+        }, 1000, 1000);
+    }
+    ```
+  </Step>
+  <Step title="onUnmount()">
+    Called when the component is removed from the tree. Use this to cancel timers, release listeners, or close connections.
+
+    ```java
+    @Override
+    protected void onUnmount() {
+        if (timer != null) {
+            timer.cancel();
+            timer = null;
+        }
+    }
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  The component's current lifecycle state is tracked by the `ComponentState` enum with two values: `MOUNTED` and `UNMOUNTED`. You can read it at any time via `_state()` — for example, to guard against state pushes before the component is visible.
+</Note>
+
+## Defining the template
+
+You have two options for providing the template markup:
+
+<Tabs>
+  <Tab title="Inline template">
+    Override `template()` and return a Java text block. This is the most common approach for small and medium-sized components.
+
+    ```java
+    public class CounterLeaf extends BaseCounter {
+
+        @Override
+        protected String template() {
+            return """
+                <div style="border: 2px dashed #666; padding: 10px;">
+                    <p>Contador: <strong>{{count}}</strong></p>
+                    <button @click="increment()">+1</button>
+                    <button @click="reset()">Reset</button>
+                </div>
+                """;
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="External .html file">
+    Place a file named `ComponentSimpleName.html` in the same classpath location as the `.java` class (for example, `src/main/resources/com/example/CounterLeaf.html`). Do **not** override `template()`. JReactive loads and caches the file automatically on first render.
+
+    ```html
+    <!-- CounterLeaf.html -->
+    <div style="border: 2px dashed #666; padding: 10px;">
+        <p>Contador: <strong>{{count}}</strong></p>
+        <button @click="increment()">+1</button>
+        <button @click="reset()">Reset</button>
+    </div>
+    ```
+
+    If neither an override nor a matching HTML file is found, JReactive throws an `IllegalStateException` at render time.
+  </Tab>
+</Tabs>
+
+## Rendering child components
+
+Use the component's simple class name as a self-closing XML tag inside any template:
+
+```html
+<div class="page">
+  <CounterLeaf />
+  <ClockLeaf />
+</div>
+```
+
+JReactive discovers, instantiates, and wires each child component automatically.
+
+### Accessing a child via `ref`
+
+Add a `ref` attribute to give a child component a local name, then call `findChild()` from the parent to get a typed reference:
+
+```html
+<!-- Parent template -->
+<HelloLeaf ref="hello" />
+<ClockLeaf ref="reloj" :greet="hello.newFruit" />
+```
+
+```java
+// Parent Java — e.g. inside an @Call method
+ClockLeaf reloj = findChild("reloj", ClockLeaf.class);
+```
+
+## Scoped CSS
+
+Place a CSS file named `ComponentSimpleName.css` alongside the class. JReactive's AOT processor scopes all selectors to the component automatically and injects the resulting `<style>` block into the page. No `<link>` tags or manual imports are needed.
+
+```
+src/main/resources/com/example/
+  CounterLeaf.java
+  CounterLeaf.css   ← scoped automatically at build time
+  CounterLeaf.html  ← optional external template
+```
+
+## Co-located JavaScript
+
+Place a JS file named `ComponentSimpleName.js` in the same location. JReactive wraps the contents in a `<script>` tag and injects it into the page the first time the component renders.
+
+```
+src/main/resources/com/example/
+  CounterLeaf.java
+  CounterLeaf.js    ← injected as <script data-resource="CounterLeaf">
+```

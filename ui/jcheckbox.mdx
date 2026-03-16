@@ -1,0 +1,123 @@
+---
+title: JCheckBox
+description: A single checkbox with a label, optional required marker, help text, and a reactive change event binding.
+---
+
+## Class signature
+
+```java
+public class JCheckBox extends HtmlComponent
+```
+
+Located in `com.ciro.jreactive.JCheckBox`.
+
+## Attributes
+
+<ParamField path="field" type="Type<String>" default="">
+  The `name` attribute written on the `<input type="checkbox">` element. Use dotted notation to bind to a field on a form DTO — for example `"form.acceptTerms"`.
+</ParamField>
+
+<ParamField path="label" type="Type<String>" default="">
+  Text rendered next to the checkbox inside the `<label>` element.
+</ParamField>
+
+<ParamField path="required" type="Type<Boolean>" default="false">
+  When `true`, appends a red asterisk (`*`) to the label text.
+</ParamField>
+
+<ParamField path="disabled" type="Type<Boolean>" default="false">
+  Declared on the component. Override `template()` to forward this to `<input disabled>` if you need browser-level disabling.
+</ParamField>
+
+<ParamField path="checked" type="Type<Boolean>" default="false">
+  Declared on the component. Override `template()` to bind this to `<input :checked>` if you need the checked state to be driven from the server.
+</ParamField>
+
+<ParamField path="helpText" type="Type<String>" default="">
+  When non-empty, renders a `<small class="jrx-help">` element below the checkbox.
+</ParamField>
+
+<ParamField path="onChange" type="String" default="">
+  A `@Call` expression fired on the `@change` DOM event when the checkbox is toggled.
+</ParamField>
+
+## Template usage
+
+```html
+<!-- Minimal -->
+<JCheckBox :field="form.acceptTerms" label="I accept the terms" />
+
+<!-- With required marker and help text -->
+<JCheckBox
+  :field="form.acceptTerms"
+  label="I accept the terms and conditions"
+  required="true"
+  helpText="You must accept to continue."
+/>
+
+<!-- React to changes on the server -->
+<JCheckBox
+  :field="form.subscribe"
+  label="Subscribe to newsletter"
+  onChange="updatePreferences(form)"
+/>
+```
+
+## Usage example
+
+The following snippet is based on the `SignupPage2` demo, which combines `JCheckBox` with `JForm` and `JInput`:
+
+```java
+@Route(path = "/signup")
+@StatefulRam
+@Client
+public class SignupPage extends AppPage {
+
+    public static class SignupForm implements Serializable {
+        @NotBlank public String name;
+        @NotBlank @Email public String email;
+        public boolean acceptTerms;
+    }
+
+    @State SignupForm form = new SignupForm();
+    @State String result = "";
+
+    @Call
+    public void register(@Valid SignupForm form) {
+        if (!form.acceptTerms) {
+            result = "You must accept the terms.";
+        } else {
+            result = "Welcome, " + form.name;
+        }
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <JCard title="Create account">
+              <JForm onSubmit="register(form)">
+                <JInput :field="form.name"  label="Name"  required="true" />
+                <JInput :field="form.email" label="Email" type="email" required="true" />
+
+                <JCheckBox
+                  :field="form.acceptTerms"
+                  label="I accept the terms and conditions"
+                  required="true"
+                />
+              </JForm>
+              <p>{{result}}</p>
+            </JCard>
+            """;
+    }
+}
+```
+
+## CSS customization
+
+| Class | Element |
+|---|---|
+| `jrx-field` | Outer wrapper `<div>` |
+| `jrx-checkbox` | Co-applied modifier class on the wrapper |
+| `jrx-label` | Label text `<span>` |
+| `jrx-required` | Required asterisk `<span>` |
+| `jrx-help` | Help text `<small>` |

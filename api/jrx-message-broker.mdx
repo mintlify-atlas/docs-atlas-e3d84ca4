@@ -1,0 +1,98 @@
+---
+title: JrxMessageBroker
+description: The SPI interface for pluggable message transport between the server and connected clients.
+keywords: [JrxMessageBroker, message broker, WebSocket, Redis, pub/sub, SPI, JReactive]
+---
+
+`JrxMessageBroker` is the transport SPI that JReactive uses to deliver DOM patch messages to connected clients and receive incoming event messages from them. The default implementation uses WebSockets directly. You can replace it with a pub/sub-backed implementation (for example, Redis Pub/Sub) to support horizontally scaled deployments where the JVM handling the WebSocket connection is not the same JVM that processed the state change.
+
+```java
+public interface JrxMessageBroker
+```
+
+---
+
+## Methods
+
+### publish(String sessionId, String message)
+
+```java
+void publish(String sessionId, String message)
+```
+
+Publishes a message destined for the client identified by `sessionId`. In the default WebSocket implementation this sends the message directly over the open socket. In a Redis-backed implementation this publishes to a channel keyed by `sessionId`, and any node with an active connection for that session delivers it.
+
+<ParamField path="sessionId" type="string" required>
+  The ID of the target client session.
+</ParamField>
+
+<ParamField path="message" type="string" required>
+  The message payload, typically a JSON-encoded DOM patch batch.
+</ParamField>
+
+### onMessage(BiConsumer\<String, String\> handler)
+
+```java
+void onMessage(BiConsumer<String, String> handler)
+```
+
+Registers a global handler for all incoming messages. The handler receives the `sessionId` and the raw message payload for every message that arrives from any connected client. JReactive uses this callback to route incoming user-event messages (button clicks, form submissions, etc.) to the correct component.
+
+<ParamField path="handler" type="BiConsumer<String, String>" required>
+  A callback `(sessionId, messagePayload) -> ...` invoked for each incoming message.
+</ParamField>
+
+---
+
+## Default behavior
+
+The default implementation ships with `jreactive-runtime-jvm` and uses the underlying WebSocket session directly: `publish()` calls `JrxSession.sendText()` and `onMessage()` is wired to the WebSocket `onMessage` callback. This works out of the box for single-node deployments.
+
+---
+
+## Replacing the broker
+
+Provide a Spring bean of type `JrxMessageBroker` to replace the default:
+
+```java
+@Configuration
+public class JrxBrokerConfig {
+
+    @Bean
+    public JrxMessageBroker messageBroker(RedisTemplate<String, String> redis) {
+        return new RedisMessageBroker(redis);
+    }
+}
+```
+
+A `RedisMessageBroker` implementation would:
+
+1. In `publish()`: publish the message to a Redis channel named after the session ID.
+2. In `onMessage()`: subscribe to all session channels and invoke the handler when a message arrives.
+
+```java
+public class RedisMessageBroker implements JrxMessageBroker {
+
+    private final RedisTemplate<String, String> redis;
+    private BiConsumer<String, String> handler;
+
+    public RedisMessageBroker(RedisTemplate<String, String> redis) {
+        this.redis = redis;
+    }
+
+    @Override
+    public void publish(String sessionId, String message) {
+        redis.convertAndSend("jrx:" + sessionId, message);
+    }
+
+    @Override
+    public void onMessage(BiConsumer<String, String> handler) {
+        this.handler = handler;
+        // subscribe to Redis pattern "jrx:*" and forward to handler
+    }
+}
+```
+
+<Tip>
+When using a pub/sub broker, pair it with a distributed `StateStore` such as `RedisStateStore` so that the component state is also accessible to all nodes. See the [Redis state store guide](/guides/redis-state-store).
+</Tip>

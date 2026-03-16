@@ -1,0 +1,141 @@
+---
+title: ReactiveVar<T>
+description: A lightweight, type-safe reactive container that notifies listeners when its value changes.
+keywords: [ReactiveVar, reactive, state, observer, JReactive]
+---
+
+`ReactiveVar<T>` is the core reactive primitive in JReactive. It wraps a single value of type `T` and notifies registered listeners every time the value changes. The framework wires `ReactiveVar` instances to the component rendering pipeline so that any change automatically triggers a DOM patch.
+
+```java
+public final class ReactiveVar<T> implements java.io.Serializable
+```
+
+`ReactiveVar` is `final` and generic. It uses a `CopyOnWriteArrayList` for its listener list, making reads and iteration lock-free and safe for concurrent access from the framework's event dispatch threads.
+
+---
+
+## Constructor
+
+```java
+public ReactiveVar(T initial)
+```
+
+Creates a new `ReactiveVar` with the given initial value.
+
+<ParamField path="initial" type="T" required>
+  The initial value. May be `null`.
+</ParamField>
+
+---
+
+## Methods
+
+### get()
+
+```java
+public T get()
+```
+
+Returns the current value.
+
+### set(T newValue)
+
+```java
+public void set(T newValue)
+```
+
+Updates the value and fires all registered listeners — unless the active guard returns `false` (see `setActiveGuard`).
+
+<ParamField path="newValue" type="T" required>
+  The new value to store and broadcast.
+</ParamField>
+
+### onChange(Consumer\<T\>)
+
+```java
+public Runnable onChange(Consumer<T> listener)
+```
+
+Registers a listener that is called every time `set()` broadcasts a new value. Returns a `Runnable` that, when called, unsubscribes the listener.
+
+<ParamField path="listener" type="Consumer<T>" required>
+  A callback that receives the new value.
+</ParamField>
+
+```java
+ReactiveVar<String> name = new ReactiveVar<>("Alice");
+
+Runnable unsubscribe = name.onChange(newName -> {
+    System.out.println("Name changed to: " + newName);
+});
+
+name.set("Bob"); // prints "Name changed to: Bob"
+
+unsubscribe.run(); // stop listening
+name.set("Carol"); // nothing printed
+```
+
+### clearListeners()
+
+```java
+public void clearListeners()
+```
+
+Removes all registered listeners. The framework calls this automatically when a component unmounts so that stale listeners do not hold references to destroyed components.
+
+### setActiveGuard(BooleanSupplier)
+
+```java
+public void setActiveGuard(BooleanSupplier guard)
+```
+
+Installs a guard predicate. When `set()` is called, the guard is evaluated first. If it returns `false`, the value is updated but **no listeners are notified**.
+
+The framework sets this guard on every `ReactiveVar` belonging to a component so that listeners are silenced while the component is unmounted:
+
+```java
+rx.setActiveGuard(() -> _state() == ComponentState.MOUNTED);
+```
+
+This prevents stale updates from unmounted components reaching the client.
+
+<ParamField path="guard" type="BooleanSupplier" required>
+  Predicate called before dispatching listeners. Pass `null` to restore the default (always active) guard.
+</ParamField>
+
+---
+
+## Example
+
+```java
+// Create
+ReactiveVar<Integer> counter = new ReactiveVar<>(0);
+
+// Read
+int current = counter.get(); // 0
+
+// Subscribe
+Runnable unsub = counter.onChange(v -> System.out.println("Counter: " + v));
+
+// Update — triggers listener
+counter.set(1); // prints "Counter: 1"
+counter.set(2); // prints "Counter: 2"
+
+// Unsubscribe
+unsub.run();
+counter.set(3); // nothing printed
+```
+
+---
+
+## Thread safety
+
+The listener list is backed by a `CopyOnWriteArrayList`. This means:
+
+- Adding and removing listeners is thread-safe.
+- Iterating the listener list (during `set()`) never throws `ConcurrentModificationException`.
+- Write-heavy listener registration patterns are not optimal — but listener churn is rare in practice.
+
+<Note>
+You rarely construct `ReactiveVar` directly in component code. Use the `@Bind` or `@State` annotations on component fields; the framework creates and wires `ReactiveVar` instances for you.
+</Note>

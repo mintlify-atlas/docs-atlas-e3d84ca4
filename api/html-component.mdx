@@ -1,0 +1,317 @@
+---
+title: HtmlComponent
+description: The base class for every JReactive UI component. Extend HtmlComponent to define a template, manage state, and compose child components.
+keywords: [HtmlComponent, component, template, lifecycle, state, JReactive]
+---
+
+`HtmlComponent` is the foundation of every JReactive UI. You extend it to define your component's template, declare reactive fields, implement lifecycle hooks, and compose child components. The framework renders it to HTML on the server and pushes incremental DOM patches to connected browsers when state changes.
+
+## Class hierarchy
+
+```
+ViewNode          (interface — render())
+  └── ViewLeaf    (abstract — getId(), bindings())
+        └── HtmlComponent  (abstract — your components extend this)
+```
+
+| Type | Role |
+|---|---|
+| `ViewNode` | Top-level interface; declares `render()` |
+| `ViewLeaf` | Adds identity (`getId()`) and bindings map |
+| `HtmlComponent` | Full component: template, lifecycle, slots, child management |
+
+## Minimal example
+
+```java
+public class GreetingCard extends HtmlComponent {
+
+    @Bind
+    public String name = "World";
+
+    @Override
+    protected String template() {
+        return """
+            <div class="card">
+              <h2>Hello, {{name}}!</h2>
+            </div>
+            """;
+    }
+}
+```
+
+## Complete example
+
+The following component shows state management, lifecycle hooks, a child component, and a slot:
+
+```java
+public class CounterPage extends HtmlComponent {
+
+    @State
+    public int count = 0;
+
+    @Override
+    protected void onInit() {
+        // Called once on first creation
+    }
+
+    @Override
+    protected void onMount() {
+        // Called each time the component becomes visible
+    }
+
+    @Override
+    protected void onUnmount() {
+        // Called when the component is removed from the tree
+    }
+
+    @Call
+    public void increment() {
+        count++;
+        updateState("count");
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <div class="page">
+              <p>Count: {{count}}</p>
+              <button @click="increment()">+1</button>
+              <StatusBadge ref="badge" />
+              <div class="slot-area">{{slot()}}</div>
+            </div>
+            """;
+    }
+}
+```
+
+---
+
+## Template methods
+
+### template()
+
+```java
+@Language("html")
+protected String template()
+```
+
+Returns the HTML markup for this component. You **must** override this method or place a file named `ComponentSimpleName.html` on the classpath alongside the class. JReactive caches the result per class — the method is only called once per JVM lifetime.
+
+If neither an override nor a matching HTML file is found, JReactive throws an `IllegalStateException` at render time.
+
+<Tip>
+Use Java text blocks (triple-quoted strings) for multiline templates. The IntelliJ `@Language("html")` hint on the method gives you syntax highlighting inside the string.
+</Tip>
+
+### render()
+
+```java
+public String render()
+```
+
+Called by the framework to produce the full HTML output of the component, including child components and bundled resources. Results are cached per component instance; the cache is invalidated automatically when reactive state changes.
+
+<Note>
+You do not normally call `render()` yourself. The framework calls it when it needs the component's HTML.
+</Note>
+
+---
+
+## Lifecycle hooks
+
+<Steps>
+  <Step title="onInit()">
+    Called **once**, the first time the component is created. Use it to set initial field values before the first render.
+
+    ```java
+    @Override
+    protected void onInit() {
+        lastUpdated = Instant.now().toString();
+    }
+    ```
+  </Step>
+  <Step title="onMount()">
+    Called each time the component transitions from `UNMOUNTED` to `MOUNTED` (i.e., each time it becomes active in the component tree). Use it to start timers, open connections, or subscribe to events.
+
+    ```java
+    @Override
+    protected void onMount() {
+        timer = new Timer(true);
+        timer.scheduleAtFixedRate(new TimerTask() {
+            @Override public void run() {
+                tick++;
+                updateState("tick");
+            }
+        }, 1000, 1000);
+    }
+    ```
+  </Step>
+  <Step title="onUnmount()">
+    Called when the component is removed from the component tree. Use it to cancel timers, remove event listeners, and release resources.
+
+    ```java
+    @Override
+    protected void onUnmount() {
+        if (timer != null) {
+            timer.cancel();
+            timer = null;
+        }
+    }
+    ```
+  </Step>
+</Steps>
+
+---
+
+## State methods
+
+### updateState(String fieldName)
+
+```java
+protected void updateState(String fieldName)
+```
+
+Triggers a reactive update for the `@State` field named `fieldName`. Call this after you mutate a plain Java field (primitives, POJOs) to notify the framework that the field's value has changed.
+
+<ParamField path="fieldName" type="string" required>
+  The Java field name of the `@State`-annotated field whose value has changed.
+</ParamField>
+
+```java
+@State
+public int score = 0;
+
+@Call
+public void addPoint() {
+    score += 10;
+    updateState("score"); // tells JReactive to push the new value
+}
+```
+
+<Note>
+You do **not** need to call `updateState()` for `SmartList`, `SmartMap`, or `SmartSet` fields — those types track mutations automatically.
+</Note>
+
+---
+
+## Slot methods
+
+Slots let parent components inject HTML content into a child component's template.
+
+### slot()
+
+```java
+protected String slot()
+```
+
+Returns the HTML injected into the default slot of this component. Call it from inside your `template()` method:
+
+```java
+@Override
+protected String template() {
+    return """
+        <div class="card">
+          %s
+        </div>
+        """.formatted(slot());
+}
+```
+
+### slot(String name)
+
+```java
+protected String slot(String name)
+```
+
+Returns the HTML for a named slot. Use named slots when a component accepts content in multiple distinct locations:
+
+```java
+@Override
+protected String template() {
+    return """
+        <div class="panel">
+          <header>%s</header>
+          <main>%s</main>
+        </div>
+        """.formatted(slot("header"), slot("body"));
+}
+```
+
+<ParamField path="name" type="string" required>
+  The slot name to retrieve. Returns an empty string if the parent did not provide content for this slot.
+</ParamField>
+
+---
+
+## Child component methods
+
+### addChild(HtmlComponent child)
+
+```java
+public void addChild(HtmlComponent child)
+```
+
+Adds a child component to this component's tree under a thread-safe lock. Duplicate children are ignored. You rarely need to call this directly — the framework calls it automatically as it processes child tags in your template.
+
+<ParamField path="child" type="HtmlComponent" required>
+  The child component instance to register.
+</ParamField>
+
+### findChild(String ref, Class\<T\> type)
+
+```java
+public <T extends HtmlComponent> T findChild(String ref, Class<T> type)
+```
+
+Searches the component subtree for a child whose `ref` attribute matches the given name and whose runtime type matches `type`. Returns `null` if no matching child is found.
+
+<ParamField path="ref" type="string" required>
+  The `ref` name given to the child in the parent's template (`<MyChild ref="myRef" />`).
+</ParamField>
+
+<ParamField path="type" type="Class<T>" required>
+  The expected Java class of the child component. Used for a type-safe cast.
+</ParamField>
+
+```java
+// Template: <DataTable ref="table" />
+DataTable table = findChild("table", DataTable.class);
+if (table != null) {
+    table.reload();
+}
+```
+
+---
+
+## Identity methods
+
+### getId()
+
+```java
+public String getId()
+```
+
+Returns the stable identifier for this component instance. If a `ref` was assigned in the parent template, that value is used; otherwise a unique auto-generated string of the form `ClassName#N` is returned.
+
+```java
+String id = myComponent.getId(); // e.g. "CounterPage#1" or "CounterPage.badge"
+```
+
+---
+
+## Framework methods (prefixed with `_`)
+
+Methods prefixed with `_` are part of the framework's internal protocol. You should not call them from component code.
+
+| Method | Purpose |
+|---|---|
+| `_getScopeId()` | Returns the CSS scope class applied to this component's styles (e.g. `jrx-sc-MyComponent`). Used by the AOT CSS scoping pipeline. |
+| `_getBundledResources()` | Returns the `<style>` and `<script>` HTML blocks for this component class, loaded once from the accessor and classpath resources. |
+| `_captureStateSnapshot()` | Records a snapshot of all `@State` field values for change detection. Called before each reactive flush. |
+| `_syncState()` | Compares current field values against the snapshot and fires `ReactiveVar` events for fields that changed. |
+| `_mountRecursive()` | Calls `onMount()` on this component and all descendants. |
+| `_unmountRecursive()` | Calls `onUnmount()` on this component and all descendants, and clears reactive bindings. |
+| `_beginRenderCycle()` / `_endRenderCycle()` | Bracket a render pass for AOT component recycling. |
+| `_clearCache()` | Invalidates the cached rendered HTML for this component and all children. |
+| `_state()` | Returns the current `ComponentState` (`MOUNTED` or `UNMOUNTED`). |
+| `_setSlots(Map)` / `_getSlotHtml(String)` | Manage slot content injected by the parent. |

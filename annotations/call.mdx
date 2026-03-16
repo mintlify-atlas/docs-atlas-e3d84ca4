@@ -1,0 +1,120 @@
+---
+title: "@Call"
+description: "Mark a method as callable from template event directives such as @click or @submit."
+---
+
+`@Call` marks a component method so that it can be invoked from a template event directive (for example, `@click="increment()"`). When the event fires in the browser, JReactive sends a WebSocket message to the server, which runs the method and pushes any state changes back to the client.
+
+## Signature
+
+```java
+@Target(METHOD)
+@Retention(RUNTIME)
+public @interface Call {
+    boolean sync() default true;
+}
+```
+
+## Attributes
+
+<ParamField path="sync" type="boolean" default="true">
+  When `true`, calls from the same session are queued and executed sequentially. When `false`, the method runs on an independent thread and may interleave with other calls.
+</ParamField>
+
+## Usage
+
+### Simple counter
+
+```java
+public abstract class BaseCounter extends HtmlComponent {
+
+    @State
+    public int count = 0;
+
+    @Call
+    public void increment() {
+        count++;
+        // @Call triggers a re-render automatically when the method returns
+    }
+
+    @Call
+    public void reset() {
+        count = 0;
+    }
+}
+```
+
+Template:
+
+```html
+<div>
+  <p>Counter: <strong>{{count}}</strong></p>
+  <button @click="increment()">+1</button>
+  <button @click="reset()">Reset</button>
+</div>
+```
+
+### Method with a parameter and validation
+
+You can pass template field values as arguments. JReactive also supports Bean Validation on parameters:
+
+```java
+@Call
+public void addFruit(@NotBlank String fruta) {
+    if (fruta == null || fruta.isBlank()) return;
+    fruits.add(fruta);
+    newFruit = "";
+}
+```
+
+Template:
+
+```html
+<input name="newFruit" placeholder="New fruit">
+<button @click="addFruit(newFruit)">Add</button>
+```
+
+### Async call
+
+Set `sync = false` when the method performs independent work and you do not need sequential ordering:
+
+```java
+@Call(sync = false)
+public void sendAnalytics(String event) {
+    analyticsService.track(event);
+}
+```
+
+## How it works
+
+When a template event fires, the JReactive JS runtime sends a WebSocket message containing the method name and any serialized arguments. On the server, the method is looked up on the component instance, deserialized arguments are injected, and the method is invoked. After it returns, any dirty `@State` fields are diffed and a delta is sent to the client to update the DOM.
+
+With `sync = true` (the default), all `@Call` invocations from a given session are processed one at a time through a per-session queue. This eliminates race conditions on shared component state without requiring explicit synchronization in your code.
+
+## Notes and warnings
+
+<Note>
+  `@Call` methods must be defined on the component class or one of its superclasses. JReactive resolves methods by walking the inheritance chain up to `HtmlComponent`.
+</Note>
+
+<Note>
+  When `sync = true`, long-running `@Call` methods will block subsequent calls from the same session until they complete. Move blocking I/O to async calls or a background thread if needed.
+</Note>
+
+<Warning>
+  Methods annotated `@Call` must be non-private. JReactive uses reflection to invoke them at runtime; private methods are not accessible.
+</Warning>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="@State" href="/annotations/state">
+    Mark a field as reactive state that drives re-renders.
+  </Card>
+  <Card title="@Bind" href="/annotations/bind">
+    Expose a field to the template context.
+  </Card>
+  <Card title="@Route" href="/annotations/route">
+    Register a component as a URL-addressable route.
+  </Card>
+</CardGroup>

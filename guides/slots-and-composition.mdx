@@ -1,0 +1,229 @@
+---
+title: "Slots and composition"
+description: "Pass HTML content from parent components to child components using slots, and compose UIs by nesting component tags."
+---
+
+## How slots work
+
+A slot is a placeholder in a child component's template that the parent fills with HTML content. The child declares `<slot />` (or `<slot name="..." />`) in its template. When the parent renders the child tag, any content placed between the opening and closing child tags becomes the slot content.
+
+Slot HTML is processed in the **parent's binding context**, so `{{variables}}` inside slot content resolve against the parent's `@State` and `@Bind` fields.
+
+## Default slot
+
+The child component declares where slot content goes with `<slot />`:
+
+```java CardComponent.java
+public class CardComponent extends HtmlComponent {
+
+    @Bind
+    public Type<String> title = $("");
+
+    @Override
+    protected String template() {
+        return """
+            <div class="card">
+              <div class="card-header">
+                <h2>{{title}}</h2>
+              </div>
+              <div class="card-body">
+                <slot />
+              </div>
+            </div>
+        """;
+    }
+}
+```
+
+The parent passes content by placing it between the component tags:
+
+```java ParentPage.java
+@Override
+protected String template() {
+    return """
+        <CardComponent title="Hello">
+            <p>This paragraph appears inside the card body.</p>
+        </CardComponent>
+    """;
+}
+```
+
+## Named slots
+
+A component can declare multiple slots by giving them names with the `name` attribute:
+
+```java CardComponent.java
+@Override
+protected String template() {
+    return """
+        <div class="card">
+          <div class="card-body">
+            <slot />
+          </div>
+          <div class="card-footer">
+            <slot name="footer" />
+          </div>
+        </div>
+    """;
+}
+```
+
+The parent fills a named slot by wrapping content in a `<template slot="name">` element:
+
+```java ParentPage.java
+@Override
+protected String template() {
+    return """
+        <CardComponent title="Confirm action">
+            <p>Are you sure you want to proceed?</p>
+
+            <template slot="footer">
+                <button @click="cancel()">Cancel</button>
+                <button @click="confirm()">Confirm</button>
+            </template>
+        </CardComponent>
+    """;
+}
+```
+
+Any content not wrapped in a `<template slot="...">` element goes to the default slot.
+
+## Accessing slot content programmatically
+
+`HtmlComponent` exposes two protected methods you can call inside `template()` to read slot content as a string:
+
+| Method | Returns |
+|---|---|
+| `slot()` | The HTML string passed to the default slot |
+| `slot(String name)` | The HTML string passed to the named slot |
+
+```java CardComponent.java
+@Override
+protected String template() {
+    String footerHtml = slot("footer");
+    boolean hasFooter = footerHtml != null && !footerHtml.isBlank();
+    return """
+        <div class="card">
+          <div class="card-body">""" + slot() + """
+          </div>""" +
+          (hasFooter ? "<div class=\"card-footer\">" + footerHtml + "</div>" : "") +
+        "</div>";
+}
+```
+
+<Note>
+  The `<slot />` element in the template is the preferred approach over calling `slot()` directly, because the engine handles it at the AST level and it is fully compatible with AOT compilation.
+</Note>
+
+## Practical example: the JCard component
+
+The built-in `JCard` component demonstrates both default and named slots:
+
+```java JCard.java
+public class JCard extends HtmlComponent {
+
+    @Bind public Type<String> title = $("");
+    @Bind public Type<String> subtitle = $("");
+    @Bind public Type<String> variant = $("flat");
+
+    @Override
+    protected String template() {
+        return """
+            <div class="jrx-card jrx-card-{{variant}}">
+
+              {{#if title}}
+                <div class="jrx-card-header">
+                  <h2 class="jrx-card-title">{{title}}</h2>
+                  {{#if subtitle}}
+                    <p class="jrx-card-subtitle">{{subtitle}}</p>
+                  {{/if}}
+                </div>
+              {{/if}}
+
+              <div class="jrx-card-body" style="padding: 15px;">
+                <slot />
+              </div>
+
+              <div class="jrx-card-footer">
+                <slot name="footer" />
+              </div>
+
+            </div>
+        """;
+    }
+}
+```
+
+A page that uses it:
+
+```java HomeTwoPage.java
+@Route(path = "/two")
+public class HomeTwoPage extends AppPage {
+
+    @State public String status = "";
+
+    @Call
+    public void cancel() {
+        this.status = "Operation cancelled.";
+    }
+
+    @Call
+    public void delete() {
+        this.status = "Deleted!";
+    }
+
+    @Override
+    protected String template() {
+        return """
+          <div>
+            <JCard title="Important notice">
+
+                <p>Are you sure you want to delete this record?</p>
+
+                {{#if status}}
+                    <div>{{status}}</div>
+                {{/if}}
+
+                <template slot="footer">
+                    <button @click="cancel()">Cancel</button>
+                    <button @click="delete()">Delete</button>
+                </template>
+
+            </JCard>
+          </div>
+        """;
+    }
+}
+```
+
+## Component references with `ref=`
+
+You can assign a reference name to a child component tag using the `ref=` attribute. This lets the parent access the child component instance at runtime using `findChild(ref, Type.class)`.
+
+```java HomePage.java
+@Override
+protected String template() {
+    return """
+        <div>
+          <HelloLeaf ref="hello"/>
+          <ClockLeaf ref="clock" :greet="hello.newFruit" />
+        </div>
+    """;
+}
+```
+
+Access the child from a `@Call` method:
+
+```java
+@Call
+public void doSomething() {
+    HelloLeaf hello = findChild("hello", HelloLeaf.class);
+    if (hello != null) {
+        // interact with hello's state
+    }
+}
+```
+
+<Note>
+  The `:greet="hello.newFruit"` binding in the example above reads the `newFruit` state field from the `HelloLeaf` referenced as `hello`. The dot-path notation traverses child component state by ref name.
+</Note>

@@ -1,0 +1,98 @@
+---
+title: JButton
+description: A reactive button component with loading and disabled states and a pluggable click handler.
+---
+
+## Class signature
+
+```java
+public class JButton extends HtmlComponent
+```
+
+Located in `com.ciro.jreactive.JButton`.
+
+## Attributes
+
+Pass each attribute as an XML attribute on the `<JButton>` tag. Prefix the attribute with `:` to bind it to a parent state variable.
+
+<ParamField path="label" type="String" default="Botón">
+  The text shown inside the button.
+</ParamField>
+
+<ParamField path="type" type="String" default="primary">
+  CSS variant class appended to the button element as `jr-btn {type}`. Use any value that matches a class in your stylesheet — for example `primary`, `secondary`, or `danger`.
+</ParamField>
+
+<ParamField path="loading" type="boolean" default="false">
+  When `true`, the button hides its label and renders a spinner (`<span class="jr-spinner">`). Use this to show in-progress feedback while a server call completes.
+</ParamField>
+
+<ParamField path="disabled" type="boolean" default="false">
+  Declared on the component but not currently forwarded to the underlying `<button>` element by the default template. Override `template()` if you need HTML-level `disabled` behavior.
+</ParamField>
+
+<ParamField path="onClick" type="String" default="">
+  A JReactive `@Call` expression invoked when the user clicks the button — for example `"saveForm(form)"`.
+</ParamField>
+
+## Template usage
+
+```html
+<!-- Static label and handler -->
+<JButton label="Save" onClick="save()" />
+
+<!-- Binding label and loading state from parent -->
+<JButton :label="btnLabel" :loading="isSaving" onClick="save()" />
+
+<!-- Danger variant -->
+<JButton label="Delete" type="danger" onClick="deleteItem()" />
+```
+
+<Note>
+  Use `:onClick` (colon prefix) only when the expression itself is a state variable. For a literal `@Call` expression string, pass it without the colon: `onClick="myMethod()"`.
+</Note>
+
+## Usage example
+
+The following page calls a `@Call` method when the button is clicked and shows a loading spinner while the call is in flight:
+
+```java
+@Route(path = "/save-demo")
+@StatefulRam
+@Client
+public class SaveDemoPage extends AppPage {
+
+    @State public boolean saving = false;
+    @State public String message = "";
+
+    @Call
+    public void save() {
+        saving = true;
+        // ... perform work ...
+        message = "Saved!";
+        saving = false;
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <div>
+              <JButton label="Save" :loading="saving" onClick="save()" />
+              <p>{{message}}</p>
+            </div>
+            """;
+    }
+}
+```
+
+## CSS customization
+
+The default template applies two CSS classes to the `<button>` element:
+
+| Class | Purpose |
+|---|---|
+| `jr-btn` | Base button styles |
+| `jr-btn-{type}` | Variant modifier — value comes from the `type` attribute |
+| `jr-spinner` | Applied to the loading indicator `<span>` |
+
+Add rules for these selectors in your component's scoped CSS file to restyle without subclassing.

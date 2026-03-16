@@ -1,0 +1,79 @@
+---
+title: UI components overview
+description: jreactive-ui is an optional module that ships pre-built HtmlComponent subclasses ready to drop into any template.
+---
+
+The `jreactive-ui` artifact is a separate Maven module that provides a set of ready-to-use UI components. Each component is a plain `HtmlComponent` subclass — you use them exactly like any other component: as XML tags in a parent template.
+
+## Adding the dependency
+
+Add `jreactive-ui` to your project's `pom.xml`:
+
+```xml
+<dependency>
+    <groupId>com.ciro</groupId>
+    <artifactId>jreactive-ui</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+</dependency>
+```
+
+<Note>
+  The `jreactive-apt` annotation processor is already pulled in transitively. You do not need to declare it separately for the UI module.
+</Note>
+
+## Available components
+
+<CardGroup cols={3}>
+  <Card title="JButton" icon="mouse-pointer" href="/ui/jbutton">
+    Clickable button with loading and disabled states, and a pluggable `onClick` handler.
+  </Card>
+  <Card title="JInput" icon="text-cursor-input" href="/ui/jinput">
+    Labeled text input with placeholder, help text, and event bindings for forms.
+  </Card>
+  <Card title="JForm" icon="layout-list" href="/ui/jform">
+    Wrapper form element with a title, layout variant, and an `onSubmit` hook.
+  </Card>
+  <Card title="JTable" icon="table" href="/ui/jtable">
+    Data table with configurable column headers, reactive row data, and a row-click handler.
+  </Card>
+  <Card title="JModal" icon="layers" href="/ui/jmodal">
+    Overlay dialog with a backdrop, slide animation, and server-controlled visibility.
+  </Card>
+  <Card title="JSelect" icon="chevron-down" href="/ui/jselect">
+    Dropdown select with typed `Option` items and built-in helper factories.
+  </Card>
+  <Card title="JCheckBox" icon="square-check" href="/ui/jcheckbox">
+    Single checkbox with a label, required marker, and a change event binding.
+  </Card>
+  <Card title="JCard" icon="credit-card" href="/ui/jcard">
+    Content container with an optional header, a default body slot, and a named footer slot.
+  </Card>
+  <Card title="Link" icon="link">
+    Client-side router-aware anchor with an `onClick` binding. Use `href` to set the destination and `onClick` for a `@Call` handler. Renders as `<a data-router>` so JReactive's client-side router intercepts navigation.
+  </Card>
+</CardGroup>
+
+## Customization
+
+All UI components respect JReactive's scoped CSS system. You can:
+
+- **Override `template()`** — subclass any component and return your own markup. Every `@Bind` field you declare on the parent class is still available as a template variable.
+- **Override CSS classes** — each component uses prefixed class names (`jrx-btn`, `jrx-field`, `jrx-table`, etc.). Target them in your own scoped CSS file to restyle without touching the component source.
+
+```java
+// Custom button that adds an icon prefix
+public class IconButton extends JButton {
+
+    @Bind public String icon = "";
+
+    @Override
+    protected String template() {
+        return """
+            <button type="button" class="jr-btn {{type}}" @click="{{onClick}}">
+              <span class="icon">{{icon}}</span>
+              <span>{{label}}</span>
+            </button>
+            """;
+    }
+}
+```

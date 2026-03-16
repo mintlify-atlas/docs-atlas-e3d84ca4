@@ -1,0 +1,190 @@
+---
+title: "Spring Boot setup"
+description: "Add JReactive to a Spring Boot 3 application in a few steps."
+---
+
+<Steps>
+  <Step title="Add the JitPack repository">
+    JReactive is published on [JitPack](https://jitpack.io). Add the repository to your `pom.xml` before the `<dependencies>` block.
+
+    ```xml pom.xml
+    <repositories>
+      <repository>
+        <id>jitpack.io</id>
+        <url>https://jitpack.io</url>
+      </repository>
+    </repositories>
+    ```
+
+    <Note>
+      JitPack builds the library directly from the source repository. The `jitpack.yml` at the root of JReactive tells JitPack to use OpenJDK 21 and run `mvn clean install -DskipTests`.
+    </Note>
+  </Step>
+
+  <Step title="Add the starter dependency">
+    Add `jreactive-starter-spring` to your `<dependencies>`. Use the latest commit hash or tag as the version.
+
+    ```xml pom.xml
+    <dependency>
+      <groupId>com.ciro</groupId>
+      <artifactId>jreactive-starter-spring</artifactId>
+      <version>0.0.1-SNAPSHOT</version>
+    </dependency>
+    ```
+
+    The starter transitively pulls in `jreactive-core`, `jreactive-runtime-jvm`, `jreactive-runtime-js`, and the Spring Boot WebSocket and Validation starters.
+  </Step>
+
+  <Step title="Configure the annotation processor">
+    Add the APT to `maven-compiler-plugin`. The `--add-exports` flags are required so the processor can access internal compiler APIs.
+
+    ```xml pom.xml
+    <build>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.11.0</version>
+          <configuration>
+            <source>21</source>
+            <target>21</target>
+
+            <annotationProcessorPaths>
+              <path>
+                <groupId>com.ciro</groupId>
+                <artifactId>jreactive-apt</artifactId>
+                <version>0.0.1-SNAPSHOT</version>
+              </path>
+            </annotationProcessorPaths>
+
+            <fork>true</fork>
+            <compilerArgs>
+              <!-- Required for the annotation processor to access compiler internals -->
+              <arg>--add-exports</arg>
+              <arg>jdk.compiler/com.sun.source.util=ALL-UNNAMED</arg>
+              <arg>--add-exports</arg>
+              <arg>jdk.compiler/com.sun.source.tree=ALL-UNNAMED</arg>
+              <arg>-parameters</arg>
+            </compilerArgs>
+          </configuration>
+        </plugin>
+      </plugins>
+    </build>
+    ```
+  </Step>
+
+  <Step title="Create the Spring Boot application class">
+    A standard `@SpringBootApplication` entry point is all you need.
+
+    ```java JReactiveApplication.java
+    package com.example;
+
+    import org.springframework.boot.SpringApplication;
+    import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+    @SpringBootApplication
+    public class JReactiveApplication {
+
+        public static void main(String[] args) {
+            SpringApplication.run(JReactiveApplication.class, args);
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Create a layout component">
+    Your layout component extends `HtmlComponent` and provides the full HTML shell. It must include three script tags: `idiomorph`, `sockjs`, and `jreactive-runtime`. Place `<slot />` where the current page content should appear.
+
+    ```java MainLayout.java
+    package com.example;
+
+    import com.ciro.jreactive.HtmlComponent;
+
+    public class MainLayout extends HtmlComponent {
+
+        @Override
+        protected String template() {
+            return """
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>My App</title>
+                </head>
+                <body>
+                    <nav>
+                        <a href="/" data-router>Home</a>
+                    </nav>
+
+                    <main>
+                        <slot />
+                    </main>
+
+                    <script src="/js/idiomorph.min.js"></script>
+                    <script src="/js/sockjs.min.js"></script>
+                    <script src="/js/jreactive-runtime.js"></script>
+                </body>
+                </html>
+            """;
+        }
+    }
+    ```
+
+    Assign the layout to your page components with `@Layout`:
+
+    ```java AppPage.java
+    package com.example;
+
+    import com.ciro.jreactive.HtmlComponent;
+    import com.ciro.jreactive.router.Layout;
+
+    @Layout(MainLayout.class)
+    public abstract class AppPage extends HtmlComponent {
+    }
+    ```
+  </Step>
+
+  <Step title="Configure routes">
+    Annotate each page component with `@Route`. The `RouteRegistry` bean (provided by the starter) scans the classpath for `@Route` annotations automatically — you do not need to register routes manually.
+
+    ```java HomePage.java
+    package com.example;
+
+    import com.ciro.jreactive.annotations.Call;
+    import com.ciro.jreactive.router.Route;
+
+    @Route(path = "/")
+    public class HomePage extends AppPage {
+
+        @State
+        public int count = 0;
+
+        @Call
+        public void increment() {
+            count++;
+        }
+
+        @Override
+        protected String template() {
+            return """
+                <div>
+                    <h1>Count: {{count}}</h1>
+                    <button @click="increment()">+1</button>
+                </div>
+            """;
+        }
+    }
+    ```
+
+    At least one route with `path="/"` must exist or the application will fail to start.
+
+    <Note>
+      JReactive auto-configures WebSocket (via SockJS at `/jrx`), the `AstComponentEngine`, and a Caffeine in-memory state store automatically. You do not need to declare any of these beans unless you want to override the defaults.
+    </Note>
+  </Step>
+</Steps>
+
+<Tip>
+  The `jreactive-demo-spring` module in the source repository is a fully working reference application. Browse it to see layouts, named slots, Redis state, and component composition in action.
+</Tip>

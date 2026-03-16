@@ -1,0 +1,96 @@
+---
+title: ComponentEngine
+description: The internal rendering dispatcher that delegates to a pluggable Strategy. Install AstComponentEngine as the default before rendering.
+keywords: [ComponentEngine, AstComponentEngine, Strategy, rendering, JReactive]
+---
+
+`ComponentEngine` is a package-private class inside `com.ciro.jreactive`. It acts as a dispatcher: it holds a single global `Strategy` instance and routes all `render()` and `renderChild()` calls through it. The `ComponentEngine` class itself is not part of the public API — you interact with it only through `AstComponentEngine`.
+
+---
+
+## Strategy interface
+
+`ComponentEngine` defines a nested interface that any rendering backend must implement:
+
+```java
+interface Strategy {
+    ComponentEngine.Rendered render(HtmlComponent ctx);
+    String renderChild(
+        HtmlComponent parent,
+        String className,
+        Map<String, String> attrs,
+        Map<String, String> slots
+    );
+}
+```
+
+`Rendered` is a simple record:
+
+```java
+record Rendered(String html, Map<String, ReactiveVar<?>> bindings) {}
+```
+
+---
+
+## Installing the engine
+
+Before the first component renders you must register a strategy. The provided JVM runtime ships with `AstComponentEngine`, an AST-based engine with AOT support.
+
+### With Spring Boot (automatic)
+
+Include `jreactive-spring-boot-starter` on the classpath. The auto-configuration calls `AstComponentEngine.installAsDefault()` for you.
+
+### Without Spring Boot (manual)
+
+Call `installAsDefault()` once during application startup, before any component renders:
+
+```java
+import com.ciro.jreactive.AstComponentEngine;
+
+public class App {
+    public static void main(String[] args) {
+        AstComponentEngine.installAsDefault();
+        // ... start your server
+    }
+}
+```
+
+`installAsDefault()` is equivalent to:
+
+```java
+ComponentEngine.setStrategy(new AstComponentEngine());
+```
+
+---
+
+## Custom strategy
+
+You can replace the built-in engine by calling `ComponentEngine.setStrategy()` directly — for example, to integrate a third-party template engine or add cross-cutting rendering logic:
+
+```java
+ComponentEngine.setStrategy(new MyCustomStrategy());
+```
+
+<Warning>
+Replacing the strategy is a global, irreversible operation for the JVM's lifetime. Do it once, before any render calls, and never in concurrent code.
+</Warning>
+
+---
+
+## AstComponentEngine
+
+`AstComponentEngine` is the production rendering backend in `jreactive-runtime-jvm`. It:
+
+- Parses each component's `template()` result into an AST of `JrxNode` objects (cached per class).
+- Walks the AST to resolve `{{variable}}` bindings, `@event` handlers, and child component tags.
+- Supports AOT accessors: if a `ComponentAccessor` is registered for a component class, the engine reads fields and calls methods through the accessor instead of reflection, eliminating reflection overhead at runtime.
+- Tracks bundled CSS and JS resources, emitting each resource block only once per render session.
+
+```java
+// Installs AstComponentEngine as the active strategy
+AstComponentEngine.installAsDefault();
+```
+
+<Note>
+If no strategy is registered when `render()` is first called, JReactive throws an `IllegalStateException` with a message indicating that you must call `AstComponentEngine.installAsDefault()` (or `ComponentEngine.setStrategy(...)`) before rendering.
+</Note>

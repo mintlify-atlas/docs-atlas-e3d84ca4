@@ -1,0 +1,97 @@
+---
+title: "@Stateless"
+description: "Run a component with zero server memory by encoding state as a signed token embedded in the rendered HTML."
+---
+
+`@Stateless` eliminates all server-side session memory for a component. Instead of keeping state in the JVM heap or an external store, JReactive encodes the component's `@State` fields as a compressed, cryptographically signed token and embeds it in the HTML sent to the browser. On every subsequent request the token is sent back, verified, and hydrated into the component on the fly.
+
+## Signature
+
+```java
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+public @interface Stateless {
+}
+```
+
+`@Stateless` has no attributes.
+
+## Usage
+
+```java
+@Route(path = "/server-owned")
+@DomMode(JrxDomMode.SERVER_OWNED)
+@Stateless
+public class ServerOwnedTestPage extends AppPage {
+
+    @State public int counter = 0;
+    @State public boolean showSecret = false;
+    @State public List<String> logs = new ArrayList<>(List.of("Server start"));
+
+    @Call
+    public void interact() {
+        counter++;
+        showSecret = !showSecret;
+        logs.add("Interaction #" + counter + " processed in Java");
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <div>
+              <h1>Counter: {{counter}}</h1>
+              {{#if showSecret}}
+                <p>Secret revealed!</p>
+              {{/if}}
+              <button @click="interact()">Interact</button>
+              <ul>
+                {{#each logs as log}}
+                  <li>{{log}}</li>
+                {{/each}}
+              </ul>
+            </div>
+            """;
+    }
+}
+```
+
+## How it works
+
+When a `@Stateless` component renders, JReactive serializes the `@State` fields to a JSON map, compresses it with LZ4, signs the compressed payload using HMAC-SHA256 with the `JRX_SECRET` environment variable, and embeds the resulting token in the HTML. On the next request the browser sends the token back; JReactive verifies the signature, decompresses the payload, and restores the state before handling the event.
+
+Tokens expire after two hours. If a token is missing, expired, or has been tampered with, JReactive aborts the reactive update.
+
+## Notes and warnings
+
+<Note>
+  `@Stateless` scales to any number of nodes with no shared storage — there is no session affinity requirement. It is well suited for public, read-heavy pages with small state.
+</Note>
+
+<Warning>
+  State must be kept small. Every interaction round-trips the full state payload through the HTML. Large object graphs (deep collections, blobs, etc.) will increase page size significantly and slow down interactions.
+</Warning>
+
+<Warning>
+  Set the `JRX_SECRET` environment variable to a stable secret in production. If the secret is not set, JReactive generates a random UUID at startup, which means tokens are invalidated on every restart.
+</Warning>
+
+<Note>
+  `@Stateless` pairs naturally with `@DomMode(JrxDomMode.SERVER_OWNED)` for fully server-rendered, zero-persistence components.
+</Note>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="@Stateful" href="/annotations/stateful">
+    Persist state to Redis so it survives restarts.
+  </Card>
+  <Card title="@DomMode" href="/annotations/dom-mode">
+    Control whether the server or client manages DOM updates.
+  </Card>
+  <Card title="@State" href="/annotations/state">
+    Mark individual fields as reactive state.
+  </Card>
+  <Card title="@Route" href="/annotations/route">
+    Register a component as a URL-addressable route.
+  </Card>
+</CardGroup>

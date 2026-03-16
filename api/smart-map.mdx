@@ -1,0 +1,128 @@
+---
+title: SmartMap<K,V>
+description: A Map implementation that automatically notifies JReactive when its contents are mutated.
+keywords: [SmartMap, reactive map, state, mutation tracking, JReactive]
+---
+
+`SmartMap<K,V>` extends `java.util.HashMap<K,V>` and intercepts all mutating operations to fire change events. JReactive subscribes to these events to trigger DOM updates without you needing to call `updateState()`.
+
+```java
+public class SmartMap<K, V> extends HashMap<K, V>
+```
+
+---
+
+## Automatic wrapping
+
+When you declare a `@State` field of type `Map<K,V>`, JReactive automatically wraps the initial value in a `SmartMap` at startup:
+
+```java
+public class ScoreBoard extends HtmlComponent {
+
+    @State
+    public Map<String, Integer> scores = new HashMap<>();
+    //  ^ automatically wrapped in SmartMap at runtime
+
+    @Call
+    public void recordScore(String player, int points) {
+        scores.put(player, points); // fires PUT event → DOM updated automatically
+    }
+
+    @Call
+    public void reset() {
+        scores.clear(); // fires CLEAR event → DOM updated automatically
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <table>
+              {{#each scores}}
+              <tr><td>{{key}}</td><td>{{value}}</td></tr>
+              {{/each}}
+            </table>
+            """;
+    }
+}
+```
+
+---
+
+## Constructors
+
+```java
+public SmartMap()
+public SmartMap(Map<? extends K, ? extends V> m)
+```
+
+Creates an empty `SmartMap` or one populated with the entries of an existing map.
+
+---
+
+## Tracked mutations
+
+| Method | Event op |
+|---|---|
+| `put(K key, V value)` | `PUT` |
+| `putAll(Map<? extends K, ? extends V> m)` | `PUT` (one per entry) |
+| `remove(Object key)` | `REMOVE` |
+| `clear()` | `CLEAR` |
+| `update(K key)` | `PUT` (re-fires for in-place object mutations) |
+
+Read-only operations (`get`, `containsKey`, `entrySet`, iteration) do not fire events.
+
+---
+
+## The update(K key) method
+
+```java
+public void update(K key)
+```
+
+`SmartMap` adds a method not present in `HashMap`. Call `update(key)` after mutating the value object stored at a key in-place, when the reference itself has not changed:
+
+```java
+// The Player object reference is the same — put() would not fire a change
+scores.get("Alice").addPoints(10);
+scores.update("Alice"); // explicitly fires PUT event so JReactive re-renders
+```
+
+---
+
+## Change record
+
+```java
+public record Change(String op, Object key, Object value)
+```
+
+| Field | Description |
+|---|---|
+| `op` | Operation name: `"PUT"`, `"REMOVE"`, or `"CLEAR"` |
+| `key` | The map key affected (`null` for `CLEAR`) |
+| `value` | The new value for `PUT`, or `null` for `REMOVE`/`CLEAR` |
+
+---
+
+## Manual subscription
+
+```java
+public void subscribe(Consumer<Change> listener)
+public void unsubscribe(Consumer<Change> listener)
+```
+
+You can subscribe directly to change events for custom side effects:
+
+```java
+@Override
+protected void onMount() {
+    ((SmartMap<String, Integer>) scores).subscribe(change -> {
+        if ("PUT".equals(change.op())) {
+            auditLog.record(change.key(), change.value());
+        }
+    });
+}
+```
+
+<Note>
+The listener list is backed by a `CopyOnWriteArrayList`, so subscribing and unsubscribing from multiple threads is safe.
+</Note>

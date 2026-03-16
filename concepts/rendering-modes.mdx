@@ -1,0 +1,220 @@
+---
+title: Rendering modes
+description: Choose between SSR with DOM diffing, client-side rendering, server-owned HTML-on-the-wire, and fully stateless token-based rendering.
+---
+
+JReactive supports four rendering modes. You select a mode per component using class-level annotations. Understanding when to use each mode lets you tune the performance, memory, and interactivity trade-offs for every part of your application.
+
+## Mode comparison
+
+| Mode | Annotation | Server memory | JS required | Use case |
+|------|------------|--------------|-------------|----------|
+| SSR + DOM diffing | _(none)_ | In-memory (Caffeine) | Runtime only | Default; best for interactive pages |
+| Client-side rendering | `@Client` | In-memory (`@StatefulRam`) | Yes (hydration) | Isolated widgets that render in the browser |
+| Server-owned HTML | `@DomMode(JrxDomMode.SERVER_OWNED)` | In-memory | Runtime only | Full HTML diffs; no client-side template logic |
+| Stateless token | `@Stateless` | None | Runtime only | Stateless forms, wizards, horizontal scale |
+
+---
+
+## SSR with DOM diffing (default)
+
+This is the default mode. The component renders to full HTML on the server at request time. Subsequent state changes push **minimal HTML diffs** (deltas) over WebSocket. The browser's JReactive runtime applies those diffs using idiomorph — existing DOM nodes are morphed in place rather than replaced.
+
+No annotation is required:
+
+<Tabs>
+  <Tab title="Java">
+    ```java
+    @Route(path = "/counter")
+    public class CounterPage extends AppPage {
+
+        @State
+        public int count = 0;
+
+        @Call
+        public void increment() {
+            count++;
+            updateState("count");
+        }
+
+        @Override
+        protected String template() {
+            return """
+                <div>
+                  <p>Count: {{count}}</p>
+                  <button @click="increment()">+1</button>
+                </div>
+                """;
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="Template">
+    ```html
+    <div>
+      <p>Count: {{count}}</p>
+      <button @click="increment()">+1</button>
+    </div>
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Client-side rendering (`@Client`)
+
+Annotate a component with `@Client` to enable client-side rendering (CSR). In this mode the server emits a lightweight shell `<div>` as a placeholder. The JReactive browser runtime receives state data and renders the component entirely in the browser using the component's compiled template.
+
+Combine `@Client` with `@StatefulRam` to keep state exclusively in server RAM and never serialize it to Redis:
+
+<Tabs>
+  <Tab title="Java">
+    ```java
+    @Client
+    @StatefulRam
+    public class CounterLeaf extends BaseCounter {
+
+        @Override
+        protected String template() {
+            return """
+                <div style="border: 2px dashed #666; padding: 10px;">
+                    <p>Contador: <strong>{{count}}</strong></p>
+                    <button @click="increment()">+1 (Inherited)</button>
+                    <button @click="reset()">Reset (Inherited)</button>
+                </div>
+                """;
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="Base class">
+    ```java
+    public abstract class BaseCounter extends HtmlComponent {
+
+        @State
+        public int count = 0;
+
+        @Call
+        public void increment() {
+            count++;
+        }
+
+        @Call
+        public void reset() {
+            count = 0;
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  `@Client` components are ideal for isolated, highly interactive widgets — such as counters, color pickers, or real-time clocks — where you want the rendering work to happen in the browser.
+</Note>
+
+---
+
+## Server-owned HTML — HTML on the wire (`@DomMode`)
+
+Annotate a component with `@DomMode(JrxDomMode.SERVER_OWNED)` to switch to the server-owned mode. In this mode the server evaluates all template logic (`{{#if}}`, `{{#each}}`, etc.) at render time and sends the resulting **complete HTML fragment** to the browser on every state change. There is no client-side template engine — the browser receives ready-to-paint HTML.
+
+This is the "HTML on the wire" approach: less JavaScript, simpler client, but larger WebSocket payloads.
+
+<Tabs>
+  <Tab title="Java">
+    ```java
+    @Route(path = "/server-owned")
+    @DomMode(JrxDomMode.SERVER_OWNED)
+    public class ServerOwnedPage extends AppPage {
+
+        @State
+        public List<String> items = new ArrayList<>();
+
+        @Call
+        public void addItem() {
+            items.add("Item #" + (items.size() + 1));
+        }
+
+        @Override
+        protected String template() {
+            return """
+                <div>
+                  <button @click="addItem()">Add item</button>
+                  <ul>
+                    {{#each items as item}}
+                      <li>{{item}}</li>
+                    {{/each}}
+                  </ul>
+                </div>
+                """;
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="Template">
+    ```html
+    <div>
+      <button @click="addItem()">Add item</button>
+      <ul>
+        {{#each items as item}}
+          <li>{{item}}</li>
+        {{/each}}
+      </ul>
+    </div>
+    ```
+  </Tab>
+</Tabs>
+
+The default DOM mode — used when `@DomMode` is absent — is `JrxDomMode.CLIENT_MANAGED`, where the JavaScript runtime applies fine-grained deltas.
+
+---
+
+## Stateless token rendering (`@Stateless`)
+
+Annotate a component with `@Stateless` to store all component state in a cryptographically signed token that is embedded in the page HTML and returned with every request. The server holds **zero memory** for these components — state is fully reconstructed from the token on each interaction.
+
+<Tabs>
+  <Tab title="Java">
+    ```java
+    @Route(path = "/signup")
+    @Stateless
+    public class SignupPage extends AppPage {
+
+        @State
+        public String name = "";
+
+        @State
+        public String email = "";
+
+        @Call
+        public void submit() {
+            // handle form submission
+        }
+
+        @Override
+        protected String template() {
+            return """
+                <form @submit="submit()">
+                  <input name="name" placeholder="Name">
+                  <input name="email" placeholder="Email">
+                  <button type="submit">Sign up</button>
+                </form>
+                """;
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="Template">
+    ```html
+    <form @submit="submit()">
+      <input name="name" placeholder="Name">
+      <input name="email" placeholder="Email">
+      <button type="submit">Sign up</button>
+    </form>
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  `@Stateless` is ideal for multi-step forms, public-facing wizards, and any scenario where you need horizontal scalability without a shared session store. Keep the state payload small — the signed token travels with every request.
+</Note>

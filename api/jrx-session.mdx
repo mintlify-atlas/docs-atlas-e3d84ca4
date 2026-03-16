@@ -1,0 +1,109 @@
+---
+title: JrxSession
+description: Represents a single connected client session and provides methods to send messages and manage session attributes.
+keywords: [JrxSession, session, WebSocket, client, JReactive]
+---
+
+`JrxSession` represents an active client connection managed by JReactive. The framework creates one `JrxSession` per connected client and passes it to transport-layer code when dispatching messages. You interact with a `JrxSession` when building custom SPI implementations such as a `JrxMessageBroker`.
+
+```java
+public interface JrxSession
+```
+
+---
+
+## Methods
+
+### getId()
+
+```java
+String getId()
+```
+
+Returns the unique identifier for this session. This ID is the same key used in `StateStore` lookups.
+
+### isOpen()
+
+```java
+boolean isOpen()
+```
+
+Returns `true` if the underlying connection is still active and messages can be sent. Check this before calling `sendText()` if the connection state may be uncertain.
+
+### sendText(String json)
+
+```java
+void sendText(String json)
+```
+
+Sends a text message to the connected client. JReactive uses this to push JSON-encoded DOM patch batches after each reactive update.
+
+<ParamField path="json" type="string" required>
+  The text payload to send. In JReactive's default protocol this is always a JSON string.
+</ParamField>
+
+### close()
+
+```java
+void close()
+```
+
+Closes the session and the underlying connection. After calling `close()`, `isOpen()` returns `false`.
+
+### setAttr(String key, Object val)
+
+```java
+void setAttr(String key, Object val)
+```
+
+Stores an arbitrary attribute on the session. JReactive uses this internally to attach the current route path and other metadata. You can use it in custom SPI code to pass data through the session lifecycle.
+
+<ParamField path="key" type="string" required>
+  Attribute name.
+</ParamField>
+
+<ParamField path="val" type="Object" required>
+  Attribute value.
+</ParamField>
+
+### getAttr(String key)
+
+```java
+Object getAttr(String key)
+```
+
+Retrieves a previously stored attribute by key. Returns `null` if the key has not been set.
+
+<ParamField path="key" type="string" required>
+  Attribute name to look up.
+</ParamField>
+
+---
+
+## Example
+
+The following shows a custom `JrxMessageBroker` that uses `JrxSession` to forward outbound messages:
+
+```java
+public class MyBroker implements JrxMessageBroker {
+
+    private final Map<String, JrxSession> sessions = new ConcurrentHashMap<>();
+
+    public void register(JrxSession session) {
+        sessions.put(session.getId(), session);
+    }
+
+    @Override
+    public void publish(String sessionId, String message) {
+        JrxSession session = sessions.get(sessionId);
+        if (session != null && session.isOpen()) {
+            session.sendText(message);
+        }
+    }
+
+    @Override
+    public void onMessage(BiConsumer<String, String> handler) {
+        // wire incoming WebSocket messages to handler
+    }
+}
+```

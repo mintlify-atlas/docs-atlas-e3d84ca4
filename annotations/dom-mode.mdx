@@ -1,0 +1,132 @@
+---
+title: "@DomMode"
+description: "Control whether the JReactive JS runtime or the Java server manages DOM evaluation and updates."
+---
+
+`@DomMode` selects the DOM management strategy for a component. The default mode lets the browser's JS runtime apply JSON deltas and evaluate template directives. Switching to `SERVER_OWNED` moves all that work to the server: Java evaluates `if`/`each` blocks at render time and sends complete HTML fragments to the client on every state change.
+
+## Signature
+
+```java
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+public @interface DomMode {
+    JrxDomMode value() default JrxDomMode.CLIENT_MANAGED;
+}
+```
+
+## Attributes
+
+<ParamField path="value" type="JrxDomMode" default="JrxDomMode.CLIENT_MANAGED">
+  The DOM management strategy. Accepts one of the `JrxDomMode` enum constants.
+</ParamField>
+
+## `JrxDomMode` enum
+
+```java
+public enum JrxDomMode {
+    /** Default: JS manages the DOM via JSON deltas and templates. */
+    CLIENT_MANAGED,
+    /** Server takes full control and sends final HTML fragments on every state change. */
+    SERVER_OWNED
+}
+```
+
+| Value | Who evaluates `if`/`each` | What travels over the wire |
+|---|---|---|
+| `CLIENT_MANAGED` | Browser JS runtime | JSON state delta |
+| `SERVER_OWNED` | Java server | Full HTML fragment |
+
+## Usage
+
+### SERVER_OWNED component
+
+```java
+@Route(path = "/server-owned")
+@DomMode(JrxDomMode.SERVER_OWNED)
+@Stateless
+public class ServerOwnedTestPage extends AppPage {
+
+    @State public int counter = 0;
+    @State public boolean showSecret = false;
+    @State public List<String> logs = new ArrayList<>(List.of("Server start"));
+
+    @Call
+    public void interact() {
+        counter++;
+        showSecret = !showSecret;
+        logs.add("Interaction #" + counter + " processed in Java");
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <div>
+              <h1>Counter: {{counter}}</h1>
+
+              {{#if showSecret}}
+                <p>Secret revealed!</p>
+              {{/if}}
+              {{#if !showSecret}}
+                <p>Secret is hidden.</p>
+              {{/if}}
+
+              <button @click="interact()">Interact</button>
+
+              <ul>
+                {{#each logs as log}}
+                  <li>{{log}}</li>
+                {{/each}}
+              </ul>
+            </div>
+            """;
+    }
+}
+```
+
+In `SERVER_OWNED` mode, JReactive evaluates `{{#if showSecret}}` and `{{#each logs as log}}` in Java and sends the resulting HTML over the WebSocket on every `interact()` call. The browser receives pure HTML and morphs the DOM with no client-side template engine.
+
+## How it works
+
+**CLIENT_MANAGED (default):** After a `@Call` returns, JReactive computes a diff of the changed `@State` fields and sends a compact JSON delta to the browser. The JS runtime applies the delta, re-evaluates template directives (if/each), and patches the DOM.
+
+**SERVER_OWNED:** After a `@Call` returns, JReactive re-renders the entire component template in Java, substituting all `{{...}}` expressions, `{{#if ...}}`, and `{{#each ...}}` blocks with their resolved values. The resulting HTML string is sent over the WebSocket. The browser uses idiomorph to morph the existing DOM to match the new HTML without a full page reload.
+
+## When to use `SERVER_OWNED`
+
+Choose `SERVER_OWNED` when:
+
+- You need pure, inspectable HTML in the browser DOM with no hidden template markers or data attributes.
+- The component has complex conditional or list logic that is easier to reason about in Java.
+- You want to eliminate the client-side template dependency for a specific component.
+
+## Notes and warnings
+
+<Note>
+  In `SERVER_OWNED` mode, the full HTML fragment is sent on every state change, which is slightly heavier on the wire than a JSON delta. This is acceptable for moderate-traffic components but evaluate it for very high-frequency updates.
+</Note>
+
+<Warning>
+  Do not combine `@DomMode(JrxDomMode.SERVER_OWNED)` with `@Client`. `SERVER_OWNED` requires Java to evaluate the template; `@Client` delegates rendering to the browser JS runtime. The two modes are mutually exclusive.
+</Warning>
+
+<Note>
+  `SERVER_OWNED` pairs naturally with `@Stateless` for fully server-controlled, zero-persistence pages.
+</Note>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="@Stateless" href="/annotations/stateless">
+    Encode state as a signed token — no server memory required.
+  </Card>
+  <Card title="@Client" href="/annotations/client">
+    Activate client-side rendering for a component.
+  </Card>
+  <Card title="@State" href="/annotations/state">
+    Mark individual fields as reactive state.
+  </Card>
+  <Card title="@Call" href="/annotations/call">
+    Mark a method as callable from template event directives.
+  </Card>
+</CardGroup>

@@ -1,0 +1,95 @@
+---
+title: Introduction
+description: JReactive — A Java/Spring Boot reactive UI framework for building component-based web applications with live updates, zero JavaScript boilerplate, and AOT compilation.
+---
+
+# JReactive
+
+JReactive is a **Java-native reactive UI framework** that lets you build dynamic, live-updating web interfaces using pure Java — no frontend build tools, no npm, no TypeScript required. Components are plain Java classes that extend `HtmlComponent`. State is declared with annotations. The browser reacts to changes automatically via WebSocket-powered DOM patching.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get a working JReactive app running in under 5 minutes
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture">
+    Understand how SSR, WebSockets, and AOT fit together
+  </Card>
+  <Card title="Core Concepts" icon="lightbulb" href="/concepts/components">
+    Learn components, state, bindings, and routing
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/html-component">
+    Full reference for every class and annotation
+  </Card>
+</CardGroup>
+
+## Why JReactive?
+
+Modern reactive UIs typically require a JavaScript framework, a build pipeline, and a separate frontend codebase. JReactive eliminates that gap: your UI logic lives entirely in Java, co-located with your business logic, compiled by the JVM.
+
+<CardGroup cols={3}>
+  <Card title="Server-Side Rendering" icon="server">
+    Components render to HTML on the server. The first paint is instant — no client-side hydration delay.
+  </Card>
+  <Card title="Live DOM Patching" icon="bolt">
+    State changes push minimal HTML diffs over WebSocket. The browser morphs the DOM in place using idiomorph.
+  </Card>
+  <Card title="AOT Compilation" icon="microchip">
+    Annotation Processing (APT) pre-compiles templates and CSS scoping at build time for zero-overhead rendering.
+  </Card>
+  <Card title="Zero JS Boilerplate" icon="ban">
+    Write component logic in Java. JReactive's runtime handles event wiring, state sync, and routing automatically.
+  </Card>
+  <Card title="Spring Boot Native" icon="leaf">
+    Drop in the `jreactive-starter-spring` dependency for zero-config auto-configuration with Spring Boot 3.
+  </Card>
+  <Card title="Flexible State" icon="database">
+    Choose between in-memory (Caffeine), Redis-distributed, or fully stateless (signed token) session strategies.
+  </Card>
+</CardGroup>
+
+## Module overview
+
+JReactive is structured as a multi-module Maven project:
+
+| Module | Purpose |
+|--------|---------|
+| `jreactive-core` | Core abstractions: `HtmlComponent`, `ReactiveVar`, annotations, router SPI |
+| `jreactive-runtime-jvm` | AST-based template engine and WebSocket protocol handler |
+| `jreactive-runtime-js` | Browser-side runtime (WebSocket client, DOM morph, event proxy) |
+| `jreactive-starter-spring` | Spring Boot auto-configuration and WebSocket integration |
+| `jreactive-apt` | Annotation processor for AOT template and CSS compilation |
+| `jreactive-ui` | Pre-built UI components (JButton, JInput, JForm, JTable, JModal, etc.) |
+| `jreactive-store-redis` | Redis-backed distributed state store |
+| `jreactive-standalone` | Standalone (non-Spring) bootstrap |
+| `jreactive-demo-spring` | Full-featured demo application |
+
+## Key annotations at a glance
+
+```java
+@Route(path = "/counter")              // Maps component to a URL
+@Stateful                               // Serialize state to Redis
+public class CounterPage extends HtmlComponent {
+
+    @State int count = 0;              // Reactive state field
+
+    @Call
+    public void increment() {          // Callable from template events
+        count++;
+        updateState("count");
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <div>
+              <p>Count: {{count}}</p>
+              <button @click="increment()">+1</button>
+            </div>
+            """;
+    }
+}
+```
+
+<Note>
+JReactive requires Java 21 and Spring Boot 3.2+. See the [Quickstart](/quickstart) to add it to your project.
+</Note>

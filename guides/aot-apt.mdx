@@ -1,0 +1,178 @@
+---
+title: "AOT compilation with APT"
+description: "Pre-compile HTML templates and scope CSS at build time using the JReactive annotation processor."
+---
+
+The `jreactive-apt` module is a Java annotation processor (APT) that runs during `mvn compile`. It inspects every class that extends `HtmlComponent` and generates a companion `*__Accessor` class containing:
+
+- **Pre-compiled AST** — the component template is parsed by `JrxParser` at build time and the resulting `List<JrxNode>` is emitted as static Java code.
+- **Scoped CSS** — any `.css` file co-located with the component is parsed and all selectors are prefixed with a per-component scope class at build time.
+- **Zero-reflection field access** — `write()`, `read()`, and `call()` methods replace reflection for all `@State` and `@Bind` fields and `@Call` methods.
+
+## JIT vs AOT rendering path
+
+| Path | When | Cost |
+|---|---|---|
+| **JIT** (fallback) | No `*__Accessor` registered for the component class | `JrxParser.parse()` called on every first render per class |
+| **AOT** | `*__Accessor` registered in `AccessorRegistry` | `AccessorRegistry.get()` — O(1) map lookup, no parsing |
+
+The `AstComponentEngine` checks `AccessorRegistry` first. If an accessor is registered, it uses the pre-compiled AST directly:
+
+```java AstComponentEngine.java (simplified)
+// AOT ZERO-PARSE: use pre-compiled AST from the generated accessor
+List<JrxNode> ast = AST_CACHE.computeIfAbsent(ctx.getClass(), k -> {
+    ComponentAccessor acc = AccessorRegistry.get((Class) k);
+    if (acc != null) {
+        List<JrxNode> precompiledAst = acc.getAst();
+        if (precompiledAst != null) {
+            return precompiledAst;
+        }
+    }
+    // Fallback (JIT): parse the template string at runtime
+    return JrxParser.parse(ctx.template());
+});
+```
+
+<Tip>
+  AOT compilation is strongly recommended for production. It eliminates template parsing overhead entirely and makes render time predictable under load.
+</Tip>
+
+## Configure the annotation processor
+
+Add `jreactive-apt` to `annotationProcessorPaths` in `maven-compiler-plugin`. The `--add-exports` flags give the processor access to internal `com.sun.source` compiler APIs that it uses to extract template strings directly from the source AST.
+
+```xml pom.xml
+<plugin>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-compiler-plugin</artifactId>
+  <version>3.11.0</version>
+  <configuration>
+    <source>21</source>
+    <target>21</target>
+
+    <annotationProcessorPaths>
+      <path>
+        <groupId>com.ciro</groupId>
+        <artifactId>jreactive-apt</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+      </path>
+    </annotationProcessorPaths>
+
+    <fork>true</fork>
+    <compilerArgs>
+      <arg>--add-exports</arg>
+      <arg>jdk.compiler/com.sun.source.util=ALL-UNNAMED</arg>
+      <arg>--add-exports</arg>
+      <arg>jdk.compiler/com.sun.source.tree=ALL-UNNAMED</arg>
+      <arg>-parameters</arg>
+    </compilerArgs>
+  </configuration>
+</plugin>
+```
+
+<Note>
+  The `--add-exports` flags are required because the processor uses `Trees.instance(env)` and `TreePath` from `jdk.compiler` to read template literal strings out of the source tree. Without these flags, the JVM module system blocks access and the processor falls back to runtime parsing.
+</Note>
+
+## The generated accessor
+
+For a component named `MyPage` in package `com.example`, the processor generates `com.example.MyPage__Accessor`:
+
+```java MyPage__Accessor.java (generated)
+@Generated("JReactiveAPT")
+public class MyPage__Accessor implements ComponentAccessor<MyPage> {
+
+    static {
+        // Self-registers when the class is first loaded
+        AccessorRegistry.register(MyPage.class, new MyPage__Accessor());
+    }
+
+    @Override
+    public void write(MyPage t, String p, Object v) {
+        switch (p) {
+            case "count": t.count = ((Number)v).intValue(); return;
+        }
+    }
+
+    @Override
+    public Object read(MyPage t, String p) {
+        switch (p) {
+            case "count": return unwrap(t.count);
+        }
+        return null;
+    }
+
+    @Override
+    public Object call(MyPage t, String m, Object... args) {
+        switch (m) {
+            case "increment":
+                t.increment();
+                return null;
+            default: throw new IllegalArgumentException("Method not found: " + m);
+        }
+    }
+
+    @Override
+    public List<JrxNode> getAst() {
+        // Pre-compiled AST — no parsing at runtime
+        return Arrays.asList(
+            new ElementNode("div", false) {{
+                children.add(new TextNode("Count: "));
+                // ... full AST tree ...
+            }}
+        );
+    }
+
+    @Override
+    public String getScopedCss() {
+        // Pre-scoped CSS string, or empty if no .css file was found
+        return ".jrx-sc-MyPage h1{color:red}";
+    }
+}
+```
+
+## The ComponentAccessor interface
+
+```java ComponentAccessor.java
+public interface ComponentAccessor<T extends HtmlComponent> {
+
+    /** Replaces Field.set() */
+    void write(T component, String property, Object value);
+
+    /** Replaces Field.get() */
+    Object read(T component, String property);
+
+    /** Replaces Method.invoke() */
+    Object call(T component, String method, Object... args);
+
+    /** Returns the pre-compiled AST, or null to fall back to JIT parsing */
+    default List<JrxNode> getAst() { return null; }
+
+    /** Returns the pre-scoped CSS string */
+    default String getScopedCss() { return null; }
+}
+```
+
+## The AccessorRegistry
+
+`AccessorRegistry` maps component classes to their generated accessors in a `ConcurrentHashMap`. When the engine first encounters a component class, it calls `AccessorRegistry.get(clazz)`. If no accessor is cached yet, the registry attempts to load `ClassName__Accessor` via `Class.forName()`. Loading the class triggers its `static {}` block, which calls `AccessorRegistry.register()`. Subsequent lookups are pure O(1) map reads.
+
+```java
+// Explicit registration (happens automatically via the static block)
+AccessorRegistry.register(MyPage.class, new MyPage__Accessor());
+
+// Lookup (called by AstComponentEngine at render time)
+ComponentAccessor<MyPage> acc = AccessorRegistry.get(MyPage.class);
+```
+
+## CSS scoping
+
+If a file named `MyPage.css` exists next to `MyPage.java` in the source tree, the processor reads it, parses it with [ph-css](https://github.com/phax/ph-css), and prefixes all selectors with `.jrx-sc-MyPage`.
+
+| Input selector | Output selector |
+|---|---|
+| `h1 { ... }` | `.jrx-sc-MyPage h1 { ... }` |
+| `:host { ... }` | `.jrx-sc-MyPage { ... }` |
+| `@media screen { h1 { ... } }` | `@media screen { .jrx-sc-MyPage h1 { ... } }` |
+
+The scoped CSS string is baked into `getScopedCss()` in the generated accessor and injected into the page once per component class.

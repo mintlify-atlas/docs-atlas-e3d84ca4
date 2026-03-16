@@ -1,0 +1,110 @@
+---
+title: Type<T>
+description: A record wrapper around ReactiveVar<T> that exposes reactive fields without requiring annotations.
+keywords: [Type, ReactiveVar, reactive field, JReactive]
+---
+
+`Type<T>` is a thin record wrapper around `ReactiveVar<T>`. It lets you expose a reactive field as a plain named field on your component — without annotations — and gives you explicit control over reading and writing the value through `get()` and `set()`.
+
+```java
+public record Type<T>(ReactiveVar<T> rx)
+```
+
+Because `Type` is a Java `record`, it is immutable at the container level: the `ReactiveVar` reference it wraps never changes, but the value inside the `ReactiveVar` can.
+
+---
+
+## Factory methods
+
+### Type.of(U initial)
+
+```java
+public static <U> Type<U> of(U initial)
+```
+
+Creates a new `Type<U>` wrapping a freshly constructed `ReactiveVar<U>` with the given initial value.
+
+```java
+Type<String> greeting = Type.of("Hello");
+```
+
+### Type.$(U initial)
+
+```java
+public static <U> Type<U> $(U initial)
+```
+
+A one-character shorthand alias for `Type.of()`. Use it in field declarations to keep them concise:
+
+```java
+Type<Integer> count = Type.$(0);
+Type<String>  title = Type.$("Untitled");
+```
+
+---
+
+## Methods
+
+### get()
+
+```java
+public T get()
+```
+
+Returns the current value from the underlying `ReactiveVar`.
+
+### set(T value)
+
+```java
+public void set(T value)
+```
+
+Updates the value in the underlying `ReactiveVar` and notifies all listeners.
+
+<ParamField path="value" type="T" required>
+  The new value to store.
+</ParamField>
+
+### rx()
+
+```java
+public ReactiveVar<T> rx()
+```
+
+Returns the underlying `ReactiveVar<T>`. Use this when you need to call `onChange()`, `clearListeners()`, or `setActiveGuard()` directly.
+
+---
+
+## Usage in a component
+
+Use `Type<T>` fields with the `@Bind` annotation to expose reactive values in templates:
+
+```java
+public class NameBadge extends HtmlComponent {
+
+    @Bind
+    public Type<String> username = Type.$("guest");
+
+    @Bind
+    public Type<Integer> age = Type.$(0);
+
+    @Call
+    public void setUser(String name, int userAge) {
+        username.set(name);
+        age.set(userAge);
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <span class="badge">
+              {{username}} ({{age}})
+            </span>
+            """;
+    }
+}
+```
+
+<Note>
+`Type<T>` and `ReactiveVar<T>` are interchangeable in `@Bind` fields. The framework detects both at startup and unwraps the inner value automatically. Prefer `Type<T>` when you want a shorter declaration; prefer `ReactiveVar<T>` when you need direct access to `onChange()` or `clearListeners()`.
+</Note>

@@ -1,0 +1,117 @@
+---
+title: SmartList<T>
+description: A List implementation that automatically notifies JReactive when its contents are mutated.
+keywords: [SmartList, reactive list, state, mutation tracking, JReactive]
+---
+
+`SmartList<T>` extends `java.util.ArrayList<T>` and intercepts all mutating operations to fire change events. JReactive subscribes to these events to trigger DOM updates without you needing to call `updateState()`.
+
+```java
+public class SmartList<E> extends ArrayList<E>
+```
+
+---
+
+## Automatic wrapping
+
+You rarely construct a `SmartList` directly. When you declare a `@State` field of type `List<T>`, JReactive automatically wraps the initial value in a `SmartList` at startup:
+
+```java
+public class TaskList extends HtmlComponent {
+
+    @State
+    public List<String> tasks = new ArrayList<>(List.of("Buy milk", "Write tests"));
+    //  ^ automatically wrapped in SmartList at runtime
+
+    @Call
+    public void addTask(String task) {
+        tasks.add(task); // fires ADD event → DOM updated automatically
+    }
+
+    @Call
+    public void removeTask(int index) {
+        tasks.remove(index); // fires REMOVE event → DOM updated automatically
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <ul>
+              {{#each tasks}}<li>{{.}}</li>{{/each}}
+            </ul>
+            <button @click="addTask('New task')">Add</button>
+            """;
+    }
+}
+```
+
+---
+
+## Constructors
+
+```java
+public SmartList()
+public SmartList(Collection<? extends E> c)
+```
+
+Creates an empty `SmartList` or one populated with the contents of an existing collection.
+
+---
+
+## Tracked mutations
+
+All of the following operations fire a `Change` event that JReactive listens to:
+
+| Method | Event op |
+|---|---|
+| `add(E e)` | `ADD` |
+| `add(int index, E element)` | `ADD` |
+| `addAll(Collection<? extends E> c)` | `ADD` (one per element) |
+| `addAll(int index, Collection<? extends E> c)` | `ADD` (one per element) |
+| `set(int index, E element)` | `SET` |
+| `remove(int index)` | `REMOVE` |
+| `remove(Object o)` | `REMOVE` |
+| `removeAll(Collection<?> c)` | `REMOVE` (one per element) |
+| `removeIf(Predicate<? super E> filter)` | `REMOVE` (one per element) |
+| `retainAll(Collection<?> c)` | `REMOVE` (one per element) |
+| `clear()` | `CLEAR` |
+
+Read-only operations (`get`, `size`, `contains`, iteration) do not fire events.
+
+---
+
+## Change record
+
+```java
+public record Change(String op, int index, Object item)
+```
+
+| Field | Description |
+|---|---|
+| `op` | Operation name: `"ADD"`, `"REMOVE"`, `"SET"`, or `"CLEAR"` |
+| `index` | The list index affected (0 for `CLEAR`) |
+| `item` | The added/set item, or `null` for `REMOVE`/`CLEAR` |
+
+---
+
+## Manual subscription
+
+You can subscribe directly to `SmartList` change events if you need custom behavior beyond the automatic DOM update:
+
+```java
+@Override
+protected void onMount() {
+    ((SmartList<String>) tasks).subscribe(change -> {
+        System.out.println(change.op() + " at index " + change.index());
+    });
+}
+```
+
+```java
+public void subscribe(Consumer<Change> listener)
+public void unsubscribe(Consumer<Change> listener)
+```
+
+<Note>
+The listener list is backed by a `CopyOnWriteArrayList`, so subscribing and unsubscribing from multiple threads is safe.
+</Note>

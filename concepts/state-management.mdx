@@ -1,0 +1,141 @@
+---
+title: State management
+description: Declare reactive state with @State, mutate it with updateState(), and let smart collections fire change events automatically.
+---
+
+JReactive state lives in annotated fields on your component class. When state changes, the framework detects the delta and pushes a minimal HTML update to the browser over WebSocket — you never manipulate the DOM directly.
+
+## Declaring state with `@State`
+
+Annotate any field with `@State` to make it reactive. The field can be a primitive, a POJO, a `List`, a `Map`, or a `Set`:
+
+```java
+public class DeltaTestPage extends AppPage {
+
+    @State
+    public List<String> items = new ArrayList<>();
+
+    @State
+    public int count = 0;
+}
+```
+
+At startup, JReactive wraps each `@State` field in an internal `ReactiveVar` and, for collections, in the appropriate smart wrapper (see [Smart collections](#smart-collections) below). The field name is used as the template binding key by default. You can override it:
+
+```java
+@State("totalCount")
+public int count = 0;
+```
+
+The template then uses `{{totalCount}}`.
+
+## Triggering updates with `updateState()`
+
+For POJO fields and primitive fields, you must call `updateState("fieldName")` after you mutate the value. This reads the current field value and calls `ReactiveVar.set()`, which notifies the framework to re-render.
+
+```java
+@Call
+public void increment() {
+    count++;
+    updateState("count");  // tells JReactive the value changed
+}
+```
+
+<Warning>
+  Always call `updateState("fieldName")` after mutating a POJO or primitive `@State` field. If you skip this call, the browser will not receive the update. Smart collections (List, Map, Set) are the exception — they fire change events automatically on every mutation.
+</Warning>
+
+### How `@Call` and `updateState()` relate
+
+Methods annotated with `@Call` are the standard way to expose actions to the template. Within a `@Call` method you call `updateState()` explicitly for any primitive or POJO field you changed:
+
+```java
+@Call
+public void reset() {
+    count = 0;
+    updateState("count");
+}
+```
+
+## Smart collections
+
+When JReactive initializes a `@State` field that holds a `List`, `Set`, or `Map`, it automatically wraps the collection in the corresponding smart type:
+
+| Java type | Wrapped as |
+|-----------|------------|
+| `List<T>` | `SmartList<T>` |
+| `Set<T>` | `SmartSet<T>` |
+| `Map<K,V>` | `SmartMap<K,V>` |
+
+Smart collections intercept every mutation method (`add`, `remove`, `set`, `clear`, `put`, etc.) and fire a fine-grained change event. The framework uses these events to send **operation deltas** to the browser instead of re-sending the full list HTML — a single `ADD` message appends one `<li>`, rather than replacing the whole `<ul>`.
+
+```java
+@State
+public List<String> items = new ArrayList<>();
+
+@Call
+public void addOne() {
+    // SmartList intercepts .add() and fires an ADD delta automatically
+    items.add("Item #" + (items.size() + 1));
+}
+
+@Call
+public void removeFirst() {
+    if (!items.isEmpty()) {
+        items.remove(0);  // fires a REMOVE delta
+    }
+}
+
+@Call
+public void clearAll() {
+    items.clear();  // fires a CLEAR delta
+}
+```
+
+You do not need to call `updateState()` for smart collection mutations.
+
+### Iterating in the template
+
+Use the `{{#each}}` directive to render a list:
+
+```html
+<ul>
+  {{#each items as item}}
+    <li>{{item}}</li>
+  {{/each}}
+</ul>
+```
+
+The `items.size` property is also available in the template as `{{items.size}}`.
+
+## State storage strategies
+
+By default, JReactive stores component state in an in-memory Caffeine cache on the server (one entry per active session). You can change this per component with a class-level annotation:
+
+| Annotation | Storage | Use case |
+|------------|---------|----------|
+| _(none)_ | In-memory Caffeine (L1) | Default; fastest, single-node |
+| `@StatefulRam` | In-memory, never serialized | Combine with `@Client`; state lives only in RAM |
+| `@Stateful` | Serialized to Redis | Multi-node / distributed deployments |
+| `@Stateless` | Signed token embedded in the page | Zero server memory; survives restarts |
+
+```java
+// Distributed, Redis-backed state
+@Route(path = "/counter")
+@Stateful
+public class CounterPage extends AppPage { ... }
+
+// State encoded in a signed token — zero server memory
+@Route(path = "/signup")
+@Stateless
+public class SignupPage extends AppPage { ... }
+
+// In-memory only — never serialized to Redis
+@Client
+@StatefulRam
+public class CounterLeaf extends BaseCounter { ... }
+```
+
+<Note>
+  `@Stateless` state travels cryptographically signed back and forth with each request. It is ideal for forms and wizard flows where the payload is small and you want horizontal scalability with no external dependency.
+</Note>

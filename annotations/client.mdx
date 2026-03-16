@@ -1,0 +1,116 @@
+---
+title: "@Client"
+description: "Activate client-side rendering (CSR) so the component is mounted and rendered in the browser by the JReactive JS runtime."
+---
+
+`@Client` switches a component from server-side rendering (SSR) to client-side rendering (CSR). The server emits a lightweight shell `<div>` with the initial state encoded as JSON. The JReactive JavaScript runtime picks up that shell and renders the component entirely in the browser.
+
+## Signature
+
+```java
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+public @interface Client {
+}
+```
+
+`@Client` has no attributes.
+
+## Usage
+
+```java
+@Client
+@StatefulRam
+public class CounterLeaf extends BaseCounter {
+
+    @Override
+    protected String template() {
+        return """
+            <div style="border: 2px dashed #666; padding: 10px; margin: 10px;">
+              <h3>Client-rendered counter</h3>
+              <p>Count: <strong>{{count}}</strong></p>
+              <button @click="increment()">+1</button>
+              <button @click="reset()">Reset</button>
+            </div>
+            """;
+    }
+}
+```
+
+### Combined with `@StatefulRam` and `@Route`
+
+```java
+@Route(path = "/signup")
+@StatefulRam
+@Client
+public class SignupPage extends AppPage {
+
+    @State
+    PageState state = new PageState();
+
+    @Call
+    public void register(@Valid SignupForm form) {
+        state.lastMessage = "User " + form.name + " registered successfully";
+        updateState("state");
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <section>
+              <h1>Sign up</h1>
+              <input type="text" name="form.name">
+              <button @click="register(form)">Register</button>
+              <p data-if="state.lastMessage">{{state.lastMessage}}</p>
+            </section>
+            """;
+    }
+}
+```
+
+### Shell HTML emitted by the server
+
+When the server encounters a `@Client` component, it writes a placeholder `<div>` into the page instead of the full HTML:
+
+```html
+<div id="jrx-SignupPage-a1b2c3" data-jrx-client='{"state":{"lastMessage":null}}'></div>
+```
+
+The JS runtime reads `data-jrx-client`, boots the component, and replaces the shell with the rendered output entirely in the browser.
+
+## How it works
+
+When JReactive renders a page that contains a `@Client` component (either as the root or as a nested leaf), it skips full HTML rendering for that component and instead:
+
+1. Serializes the initial `@State` and `@Bind` values to a JSON object.
+2. Emits a `<div>` shell with `data-jrx-client` containing the JSON.
+3. Leaves the JS runtime responsible for all subsequent template evaluation and DOM updates.
+
+CSS and JavaScript resources are still emitted once by the server on the initial page load.
+
+## Notes
+
+<Note>
+  `@Client` is commonly paired with `@StatefulRam`. The RAM store keeps state in the JVM heap for the duration of the session without serializing to an external store.
+</Note>
+
+<Note>
+  Resources (CSS, JS bundles) declared by the component are still included in the server-rendered `<head>` on the first load. Only the component's HTML output is deferred to the client.
+</Note>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="@Stateful" href="/annotations/stateful">
+    Persist state to Redis for multi-node deployments.
+  </Card>
+  <Card title="@Stateless" href="/annotations/stateless">
+    Zero server memory — state travels in the HTML token.
+  </Card>
+  <Card title="@DomMode" href="/annotations/dom-mode">
+    Control whether the server or client manages DOM updates.
+  </Card>
+  <Card title="@State" href="/annotations/state">
+    Mark individual fields as reactive state.
+  </Card>
+</CardGroup>

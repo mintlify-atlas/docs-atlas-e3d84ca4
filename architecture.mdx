@@ -1,0 +1,164 @@
+---
+title: Architecture
+description: How JReactive's modules, rendering pipeline, WebSocket reactive loop, and AOT compilation work together.
+---
+
+JReactive is a multi-module Maven project. Each module has a single responsibility. Understanding the boundaries between them helps you configure, extend, or debug the framework.
+
+## Module overview
+
+<CardGroup cols={2}>
+  <Card title="jreactive-core" icon="cube">
+    Core abstractions: `HtmlComponent`, `ReactiveVar`, `@State`, `@Call`, `@Route`, `@Layout`, and the component engine SPI. Every other module depends on this one.
+  </Card>
+  <Card title="jreactive-runtime-jvm" icon="server">
+    The `AstComponentEngine` — parses templates into an AST, resolves bindings, renders HTML, and handles WebSocket call dispatch via `JrxHubManager`.
+  </Card>
+  <Card title="jreactive-runtime-js" icon="code">
+    The browser-side runtime (`jreactive-runtime.js`): WebSocket client, reactive state proxy, DOM diff application via idiomorph, client-side router, and CSR rendering.
+  </Card>
+  <Card title="jreactive-starter-spring" icon="leaf">
+    Spring Boot auto-configuration. Registers `AstComponentEngine`, `PageResolver`, `JrxHubManager`, `WebSocketConfig` (`/jrx` endpoint), and a default `CaffeineStateStore`.
+  </Card>
+  <Card title="jreactive-apt" icon="microchip">
+    Annotation processor (APT). At compile time, generates a `ComponentAccessor` for each `HtmlComponent` subclass. The accessor stores the pre-parsed AST and scoped CSS, eliminating runtime template parsing.
+  </Card>
+  <Card title="jreactive-ui" icon="layout-grid">
+    Pre-built UI components: `JButton`, `JInput`, `JForm`, `JTable`, `JModal`, and others. All are standard `HtmlComponent` subclasses.
+  </Card>
+  <Card title="jreactive-store-redis" icon="database">
+    Redis-backed `StateStore` implementation for distributed deployments. Replace the default `CaffeineStateStore` by declaring a `StateStore` bean.
+  </Card>
+  <Card title="jreactive-standalone" icon="box">
+    Standalone bootstrap for non-Spring environments.
+  </Card>
+</CardGroup>
+
+## Request and render lifecycle
+
+When a browser requests a URL, JReactive handles it as follows:
+
+1. **HTTP request** arrives at Spring MVC.
+2. **`PageResolver`** matches the path against registered `@Route` components using `RouteProvider`. It resolves URL parameters and instantiates (or restores from the `StateStore`) the matched `HtmlComponent`.
+3. **Layout composition** — if the component's class is annotated with `@Layout`, `PageResolver` wraps it inside the specified layout component, passing the page's rendered HTML into the layout's `<slot />`.
+4. **`HtmlComponent.render()`** delegates to `ComponentEngine`, which is set to `AstComponentEngine` by `JReactiveAutoConfiguration`.
+5. **`AstComponentEngine`** retrieves the pre-compiled AST from the `AccessorRegistry` (AOT path) or parses the template at runtime via `JrxParser.parse()` (JIT fallback). It resolves `{{variable}}` bindings, expands child component tags, and emits scoped CSS.
+6. **HTML response** is written to the browser. The page is fully rendered — no client-side hydration step is required.
+
+```
+HTTP GET /counter
+   │
+   ▼
+PageResolver  ──→  matches @Route(path = "/counter")
+   │                restores or creates CounterPage
+   │
+   ▼
+@Layout wraps page in MainLayout  (slot injection)
+   │
+   ▼
+AstComponentEngine.render()
+   │  └─ AccessorRegistry.get(CounterPage.class)  → pre-compiled AST  (AOT)
+   │  └─ JrxParser.parse(template())              → parsed AST        (JIT fallback)
+   │
+   ▼
+HTML string  ──→  HTTP 200 response
+```
+
+## WebSocket reactive loop
+
+After the initial page load, all state changes flow over a persistent WebSocket connection managed by SockJS at `/jrx`.
+
+1. The user interacts with the page (e.g., clicks a `<button @click="increment()">`).  
+2. The browser runtime intercepts the event and sends a WebSocket message to the server containing the component ID, method name, and serialized arguments.
+3. **`JrxHubManager`** receives the message, looks up the live `HtmlComponent` instance by session, and calls the target `@Call` method through `CallGuard` (which also runs Bean Validation on arguments).
+4. The `@Call` method mutates `@State` fields.
+5. `ReactiveVar` listeners detect the change and trigger a re-render of the affected subtree.
+6. `AstComponentEngine` renders the updated HTML fragment.
+7. The diff (updated HTML) is pushed back to the browser over the same WebSocket connection.
+8. The browser applies the update using **idiomorph**, which morphs the existing DOM in place rather than replacing it wholesale, preserving focus, scroll position, and CSS transitions.
+
+```
+User clicks button
+   │
+   ▼
+jreactive-runtime.js  ──→  WebSocket message  {id, method, args}
+   │
+   ▼
+JrxHubManager  ──→  CallGuard  ──→  component.increment()
+   │
+   ▼
+@State field mutates  ──→  ReactiveVar listeners fire
+   │
+   ▼
+AstComponentEngine.render()  ──→  updated HTML fragment
+   │
+   ▼
+WebSocket push  ──→  browser
+   │
+   ▼
+idiomorph.morph(existingDom, newHtml)
+```
+
+<Note>
+`HtmlComponent` uses a `ReentrantLock` internally to serialize concurrent state mutations and renders for the same component instance. This prevents torn reads when multiple WebSocket messages arrive simultaneously for the same session.
+</Note>
+
+## AOT vs JIT rendering
+
+JReactive supports two template compilation modes:
+
+**AOT (ahead-of-time) — default when `jreactive-apt` is on the annotation processor path**
+
+The APT processor runs at `javac` time. For every `HtmlComponent` subclass it finds, it generates a `ComponentAccessor` that holds the pre-parsed `List<JrxNode>` AST and the scoped CSS string. At runtime, `AstComponentEngine` calls `AccessorRegistry.get(componentClass)` and receives the pre-built AST immediately — no parsing cost at request time.
+
+```java
+// Inside AstComponentEngine — AOT path
+List<JrxNode> ast = AST_CACHE.computeIfAbsent(ctx.getClass(), k -> {
+    ComponentAccessor acc = AccessorRegistry.get((Class) k);
+    if (acc != null) {
+        List<JrxNode> precompiledAst = acc.getAst();
+        if (precompiledAst != null) {
+            return precompiledAst;   // AOT: zero-parse
+        }
+    }
+    // JIT fallback
+    return JrxParser.parse(ctx.template());
+});
+```
+
+**JIT (just-in-time) — fallback**
+
+If the APT processor did not run (or the component was added after compilation), `JrxParser.parse()` is called on the first render and the result is cached in `AST_CACHE` for all subsequent renders.
+
+## Rendering modes
+
+You control where and how a component renders using class-level annotations.
+
+| Mode | Annotation | Behaviour |
+|---|---|---|
+| **SSR** | _(none — default)_ | Component renders to HTML on the server. The browser receives ready-to-display markup. Reactive bindings are wired by the JS runtime after load. |
+| **CSR** | `@Client` | The server emits only a shell `<div data-jrx-client="...">`. The browser fetches the component's pre-compiled JS renderer (generated by APT) and renders it client-side. |
+| **SERVER_OWNED** | `@DomMode(JrxDomMode.SERVER_OWNED)` | The server fully controls the DOM. Conditional (`{{#if}}`) and loop (`{{#each}}`) directives are evaluated in Java and the resulting HTML is sent as-is. No client-side blueprint templates are emitted. |
+
+```java
+// CSR: renders in the browser
+@Client
+@StatefulRam
+public class CounterLeaf extends BaseCounter { ... }
+
+// SERVER_OWNED: server evaluates all directives, pushes HTML on the wire
+@DomMode(JrxDomMode.SERVER_OWNED)
+public class ServerOwnedTestPage extends HtmlComponent { ... }
+```
+
+SSR is the right default for most pages. Use `@Client` for highly interactive leaf components where you want the browser to own the render cycle. Use `SERVER_OWNED` when you want the server to produce final HTML with no client-side logic — useful for table rows, paginated lists, or any content where SEO or simplicity matters more than client-side reactivity.
+
+## State storage
+
+Component state is persisted between requests using a `StateStore`. The starter registers `CaffeineStateStore` (in-memory, bounded by Caffeine's eviction policy) by default. You can replace it by declaring your own `StateStore` bean — the `@ConditionalOnMissingBean` guard on the auto-configuration ensures your bean wins.
+
+| Strategy | Annotation | Store |
+|---|---|---|
+| In-memory per JVM | `@StatefulRam` | `CaffeineStateStore` (default) |
+| Redis-distributed | `@Stateful` | `jreactive-store-redis` |
+| Stateless (signed token) | `@Stateless` | None — state is embedded in a signed `<meta name="jrx-state">` tag |

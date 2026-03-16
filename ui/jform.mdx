@@ -1,0 +1,144 @@
+---
+title: JForm
+description: A reactive form wrapper component with an optional title, a layout variant, and a server-side submit handler.
+---
+
+## Class signature
+
+```java
+public class JForm extends HtmlComponent
+```
+
+Located in `com.ciro.jreactive.JForm`.
+
+## Attributes
+
+<ParamField path="title" type="Type<String>" default="">
+  When non-empty, renders an `<h2 class="jrx-form-title">` at the top of the form.
+</ParamField>
+
+<ParamField path="layout" type="Type<String>" default="vertical">
+  A CSS modifier applied to the form body as `layout-{layout}`. Use this to switch between layout variants — for example `vertical` or `horizontal` — by targeting those classes in your CSS.
+</ParamField>
+
+<ParamField path="onSubmit" type="String" default="">
+  A `@Call` expression invoked when the form is submitted. When this attribute is set, `JForm` also renders a `<button type="submit">` at the bottom of the form automatically.
+</ParamField>
+
+## Template usage
+
+```html
+<!-- Minimal: form without a built-in submit button -->
+<JForm>
+  <JInput :field="form.name" label="Name" />
+</JForm>
+
+<!-- With title and submit handler -->
+<JForm title="Create account" onSubmit="register(form)">
+  <JInput :field="form.name"  label="Name"  type="text"  required="true" />
+  <JInput :field="form.email" label="Email" type="email" required="true" />
+</JForm>
+
+<!-- Horizontal layout -->
+<JForm layout="horizontal" onSubmit="search(query)">
+  <JInput :field="query.term" label="Search" />
+</JForm>
+```
+
+## Form binding pattern
+
+`JForm` wraps child components in a `<form>` element and fires `onSubmit` when it is submitted. Child components place their values on DOM elements whose `name` attribute uses dotted notation (for example `name="form.email"`). JReactive collects those values and deserializes them into the `@Call` method parameter.
+
+The pattern for a complete form page is:
+
+<Steps>
+  <Step title="Define a DTO">
+    Create a serializable inner class with Bean Validation annotations:
+
+    ```java
+    public static class RegistrationForm implements Serializable {
+        @NotBlank public String name;
+        @NotBlank @Email public String email;
+    }
+    ```
+  </Step>
+  <Step title="Declare state">
+    Hold the form data and any result message as `@State` fields:
+
+    ```java
+    @State RegistrationForm form = new RegistrationForm();
+    @State String result = "";
+    ```
+  </Step>
+  <Step title="Write the @Call handler">
+    Accept the DTO (optionally annotated with `@Valid`) and update state:
+
+    ```java
+    @Call
+    public void register(@Valid RegistrationForm form) {
+        result = "Registered: " + form.name;
+    }
+    ```
+  </Step>
+  <Step title="Wire the template">
+    Use `JForm` with `onSubmit` pointing to the method, and `JInput` fields pointing to the DTO fields:
+
+    ```html
+    <JForm title="Register" onSubmit="register(form)">
+      <JInput :field="form.name"  label="Name"  required="true" />
+      <JInput :field="form.email" label="Email" type="email" required="true" />
+    </JForm>
+    <p>{{result}}</p>
+    ```
+  </Step>
+</Steps>
+
+## Full usage example
+
+```java
+@Route(path = "/register")
+@StatefulRam
+@Client
+public class RegisterPage extends AppPage {
+
+    public static class RegistrationForm implements Serializable {
+        @NotBlank public String name;
+        @NotBlank @Email public String email;
+    }
+
+    @State RegistrationForm form = new RegistrationForm();
+    @State String result = "";
+
+    @Call
+    public void register(@Valid RegistrationForm form) {
+        result = "Welcome, " + form.name + "!";
+    }
+
+    @Override
+    protected String template() {
+        return """
+            <JCard title="Create your account">
+              <JForm onSubmit="register(form)">
+                <JInput :field="form.name"  label="Full name" required="true" />
+                <JInput :field="form.email" label="Email"     type="email" required="true" />
+              </JForm>
+              <p>{{result}}</p>
+            </JCard>
+            """;
+    }
+}
+```
+
+## CSS customization
+
+| Class | Element |
+|---|---|
+| `jrx-form` | The `<form>` element |
+| `jrx-form-title` | The optional title `<h2>` |
+| `jrx-form-body` | The slot wrapper `<div>` |
+| `jrx-form-body.layout-vertical` | Applied when `layout="vertical"` |
+| `jrx-form-body.layout-horizontal` | Applied when `layout="horizontal"` |
+
+<Note>
+  When `onSubmit` is non-empty, `JForm` renders a plain `<button type="submit">` at the bottom of the form. Override `template()` to replace that button with a `JButton` component or to apply custom styles.
+</Note>
